@@ -1,0 +1,17 @@
+Build hierarchical model C4.
+Create detailed codemap for coding agent with all files present.
+
+- Start from the **high-level modules/packages**.
+- Drill down into **submodules, classes, and functions**.
+- Follow **C4 model principles** (System → Container → Component → Code).
+
+For **best results** you want a C4-aligned JSON schema that works from
+**System → Container → Component → Code** while staying practical for a codebase.
+
+Output only with JSON, no comments or explanations.
+
+- **system** → project-wide context (name, purpose).
+- **containers** → deployable units (API service, CLI tool, worker, database wrapper).
+- **components** → logical modules within a container (auth, storage, API routes, indexer, etc.).
+- **files** → mapped directly from filesystem tree (use shell command `tree`).
+- **classes / functions** → code-level breakdown for traceability.

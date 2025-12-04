@@ -1,0 +1,42 @@
+{
+  "output": {
+    "style": "xml",
+    "filePath": "repomix-output.txt",
+    "instructionFilePath": "repomix-prompt.txt",
+    "removeComments": true,
+    "removeEmptyLines": true,
+    "compress": true
+  },
+  "security": {
+    "enableSecurityCheck": false
+  },
+  "include": [
+    "**/*"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "issues_*/*",
+      "**/*.log",
+      "c4_map.json",
+      "**/tsconfig.json",
+      "nextnet-avsync-core-node-client/*",
+      "pdl-simulator/*",
+      "ota-service/*",
+      "streaming-service/*",
+      "docs/agent-book.md",
+      ".cursor/**",
+      "**/*.md",
+      "**/*.txt",
+      "**/*.json",
+      "**/*.yaml",
+      "**/*.yml",
+      "**/*.xml",
+      "**/*.tgz",
+      "LICENSE",
+      "**/.cursor/**",
+      "platform/shared/hey-api"
+    ]
+  }
+}
