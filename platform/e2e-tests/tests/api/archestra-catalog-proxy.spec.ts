@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../../consts";
 import { expect, test } from "./fixtures";
 
 test.describe("Archestra Catalog Proxy", () => {
-  test("includes archestra-browser in online catalog results", async ({
+  test("includes archestra-playwright in online catalog results", async ({
     request,
   }) => {
     // Catalog proxy is public, can use direct request
@@ -13,24 +13,24 @@ test.describe("Archestra Catalog Proxy", () => {
     expect(response.ok()).toBeTruthy();
 
     const data = await response.json();
-    const browserServer = data.servers.find(
-      (s: { name: string }) => s.name === "archestra-browser",
+    const playwrightServer = data.servers.find(
+      (s: { name: string }) => s.name === "archestra-playwright",
     );
 
-    expect(browserServer).toBeDefined();
-    expect(browserServer.display_name).toBe("Archestra Browser");
+    expect(playwrightServer).toBeDefined();
+    expect(playwrightServer.display_name).toBe("Archestra Playwright");
     // Note: tool_calling_policy is intentionally excluded from external API
   });
 
-  test("can fetch archestra-browser by name", async ({ request }) => {
+  test("can fetch archestra-playwright by name", async ({ request }) => {
     // Path matches external API: /server/{name}
     const response = await request.get(
-      `${API_BASE_URL}/api/archestra-catalog/server/archestra-browser`,
+      `${API_BASE_URL}/api/archestra-catalog/server/archestra-playwright`,
     );
     expect(response.ok()).toBeTruthy();
 
     const server = await response.json();
-    expect(server.name).toBe("archestra-browser");
+    expect(server.name).toBe("archestra-playwright");
     expect(server.category).toBe("Browser Automation");
   });
 
@@ -49,15 +49,15 @@ test.describe("Archestra Catalog Proxy", () => {
 
   test("filters builtin servers by search query", async ({ request }) => {
     const response = await request.get(
-      `${API_BASE_URL}/api/archestra-catalog/search?q=browser`,
+      `${API_BASE_URL}/api/archestra-catalog/search?q=playwright`,
     );
     expect(response.ok()).toBeTruthy();
 
     const data = await response.json();
-    const browserServer = data.servers.find(
-      (s: { name: string }) => s.name === "archestra-browser",
+    const playwrightServer = data.servers.find(
+      (s: { name: string }) => s.name === "archestra-playwright",
     );
-    expect(browserServer).toBeDefined();
+    expect(playwrightServer).toBeDefined();
   });
 
   test("filters builtin servers by category", async ({ request }) => {
@@ -67,17 +67,17 @@ test.describe("Archestra Catalog Proxy", () => {
     expect(response.ok()).toBeTruthy();
 
     const data = await response.json();
-    const browserServer = data.servers.find(
-      (s: { name: string }) => s.name === "archestra-browser",
+    const playwrightServer = data.servers.find(
+      (s: { name: string }) => s.name === "archestra-playwright",
     );
-    expect(browserServer).toBeDefined();
+    expect(playwrightServer).toBeDefined();
   });
 
   test("builtin server has correct transport configuration", async ({
     request,
   }) => {
     const response = await request.get(
-      `${API_BASE_URL}/api/archestra-catalog/server/archestra-browser`,
+      `${API_BASE_URL}/api/archestra-catalog/server/archestra-playwright`,
     );
     expect(response.ok()).toBeTruthy();
 

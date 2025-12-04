@@ -4,6 +4,11 @@ Issue reference: [#1303 - Browse web via MCP, native in Archestra](https://githu
 
 ## Executive Summary
 
+Dear community, let's build something amazing.
+
+**We're thinking of giving Archestra Chat UI the ability to browse the web inside Archestra's Chat UI. Similar to cursor's browser:**
+![cursor-browser](./cursor-browser.png)
+
 This task is to add browser automation capabilities to Archestra.
 The solution extends the existing MCP orchestrator to provide browser state management and UI rendering.
 

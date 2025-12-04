@@ -76,6 +76,17 @@ export default class K8sPod {
   }
 
   /**
+   * Constructs a valid Kubernetes Service name for an MCP server.
+   * Service names must be max 63 characters (RFC 1123 label).
+   *
+   * Uses format "mcp-svc-{id}" to keep it short.
+   */
+  static constructServiceName(mcpServerId: string): string {
+    // mcp-svc- = 8 chars, leaving 55 chars for the ID
+    return `mcp-svc-${mcpServerId}`.substring(0, 63);
+  }
+
+  /**
    * Ensures a string is RFC 1123 compliant for Kubernetes DNS subdomain names and label values.
    *
    * According to RFC 1123, Kubernetes DNS subdomain names must:
@@ -493,11 +504,11 @@ export default class K8sPod {
             if (
               config.orchestrator.kubernetes.loadKubeconfigFromCurrentCluster
             ) {
-              const serviceName = `${this.podName}-service`;
+              const serviceName = K8sPod.constructServiceName(this.mcpServer.id);
               baseUrl = `http://${serviceName}.${this.namespace}.svc.cluster.local:${httpPort}`;
             } else {
               // Local dev: get NodePort from service
-              const serviceName = `${this.podName}-service`;
+              const serviceName = K8sPod.constructServiceName(this.mcpServer.id);
               try {
                 const service = await this.k8sApi.readNamespacedService({
                   name: serviceName,
@@ -605,11 +616,11 @@ export default class K8sPod {
         let baseUrl: string;
         if (config.orchestrator.kubernetes.loadKubeconfigFromCurrentCluster) {
           // In-cluster: use service DNS name
-          const serviceName = `${this.podName}-service`;
+          const serviceName = K8sPod.constructServiceName(this.mcpServer.id);
           baseUrl = `http://${serviceName}.${this.namespace}.svc.cluster.local:${httpPort}`;
         } else {
           // Local dev: get NodePort from service
-          const serviceName = `${this.podName}-service`;
+          const serviceName = K8sPod.constructServiceName(this.mcpServer.id);
           const service = await this.k8sApi.readNamespacedService({
             name: serviceName,
             namespace: this.namespace,
@@ -662,7 +673,7 @@ export default class K8sPod {
    * Create a K8s Service for HTTP-based MCP servers
    */
   private async createServiceForHttpServer(httpPort: number): Promise<void> {
-    const serviceName = `${this.podName}-service`;
+    const serviceName = K8sPod.constructServiceName(this.mcpServer.id);
 
     try {
       // Check if service already exists
