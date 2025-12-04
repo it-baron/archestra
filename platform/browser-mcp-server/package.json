@@ -1,0 +1,30 @@
+{
+  "name": "@archestra/browser-mcp-server",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/server.mjs",
+  "bin": {
+    "browser-mcp-server": "./dist/server.mjs"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "start": "node dist/server.mjs",
+    "test": "vitest",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "playwright": "^1.50.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@types/node": "^22.14.1",
+    "tsdown": "^0.12.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

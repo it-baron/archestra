@@ -1,5 +1,4 @@
 import { withSentryConfig } from "@sentry/nextjs";
-import { MCP_CATALOG_API_BASE_URL } from "@shared";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -24,9 +23,10 @@ const nextConfig: NextConfig = {
     const backendUrl =
       process.env.ARCHESTRA_API_BASE_URL || "http://localhost:9000";
     return [
+      // Route archestra catalog through backend (merges built-in servers)
       {
         source: "/api/archestra-catalog/:path*",
-        destination: `${MCP_CATALOG_API_BASE_URL}/:path*`,
+        destination: `${backendUrl}/api/archestra-catalog/:path*`,
       },
       {
         source: "/api/:path*",

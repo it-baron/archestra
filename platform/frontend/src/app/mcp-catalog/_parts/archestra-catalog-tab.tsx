@@ -26,11 +26,22 @@ import {
   useCreateInternalMcpCatalogItem,
   useInternalMcpCatalog,
 } from "@/lib/internal-mcp-catalog.query";
+import { useSaveMcpServerPolicyPreference } from "@/lib/mcp-server-policies.query";
 import type { SelectedCategory } from "./CatalogFilters";
 import { DetailsDialog } from "./details-dialog";
 import { parseDockerArgsToLocalConfig } from "./docker-args-parser";
+import { PolicyConfigDialog } from "./policy-config-dialog";
 import { RequestInstallationDialog } from "./request-installation-dialog";
 import { TransportBadges } from "./transport-badges";
+
+// Extended type for built-in servers with tool_calling_policy
+interface BuiltinMcpServerManifest
+  extends archestraCatalogTypes.ArchestraMcpServerManifest {
+  tool_calling_policy?: {
+    prompt_on_install?: boolean;
+    preset?: string;
+  };
+}
 
 type ServerType = "all" | "remote" | "local";
 
@@ -53,6 +64,14 @@ export function ArchestraCatalogTab({
     type: "all",
     category: "all",
   });
+
+  // State for policy configuration dialog
+  const [policyDialogState, setPolicyDialogState] = useState<{
+    open: boolean;
+    catalogId: string;
+    serverName: string;
+    preset: string;
+  } | null>(null);
 
   // Get catalog items for filtering (with live updates)
   const { data: catalogItems } = useInternalMcpCatalog({
@@ -78,6 +97,9 @@ export function ArchestraCatalogTab({
 
   // Mutation for adding servers to catalog
   const createMutation = useCreateInternalMcpCatalogItem();
+
+  // Mutation for saving policy preference
+  const savePolicyMutation = useSaveMcpServerPolicyPreference();
 
   const handleAddToCatalog = async (
     server: archestraCatalogTypes.ArchestraMcpServerManifest,
@@ -191,6 +213,9 @@ export function ArchestraCatalogTab({
       promptOnInstallation: boolean;
     }>,
   ) => {
+    // Cast to BuiltinMcpServerManifest to access tool_calling_policy
+    const builtinServer = server as BuiltinMcpServerManifest;
+
     // Rewrite redirect URIs to prefer platform callback (port 3000)
     const rewrittenOauth =
       server.oauth_config && !server.oauth_config.requires_proxy
@@ -213,6 +238,18 @@ export function ArchestraCatalogTab({
         server.server.args,
         server.server.docker_image,
       );
+
+      // Detect streamable-http transport from env vars
+      const httpPort = server.server.env?.MCP_HTTP_PORT;
+      const httpPath = server.server.env?.MCP_HTTP_PATH;
+      const transportSettings = httpPort
+        ? {
+            transportType: "streamable-http" as const,
+            httpPort: Number(httpPort),
+            httpPath: httpPath || "/mcp",
+          }
+        : {};
+
       if (dockerConfig) {
         localConfig = {
           command: dockerConfig.command,
@@ -228,6 +265,7 @@ export function ArchestraCatalogTab({
                   promptOnInstallation: false,
                 }))
               : undefined),
+          ...transportSettings,
         };
       } else {
         localConfig = {
@@ -243,12 +281,14 @@ export function ArchestraCatalogTab({
                   promptOnInstallation: false,
                 }))
               : undefined),
+          ...transportSettings,
         };
       }
     }
 
-    await createMutation.mutateAsync({
+    const result = await createMutation.mutateAsync({
       name: server.name,
+      label: server.display_name || undefined, // Display name for UI
       version: undefined, // No version in archestra catalog
       serverType: server.server.type,
       serverUrl:
@@ -262,8 +302,23 @@ export function ArchestraCatalogTab({
       oauthConfig: rewrittenOauth,
     });
 
-    // Close the dialog after adding
-    onClose();
+    // Check if server has tool_calling_policy that should prompt on install
+    if (
+      builtinServer.tool_calling_policy?.prompt_on_install &&
+      builtinServer.tool_calling_policy?.preset &&
+      result?.id
+    ) {
+      // Show policy configuration dialog
+      setPolicyDialogState({
+        open: true,
+        catalogId: result.id,
+        serverName: server.display_name || server.name,
+        preset: builtinServer.tool_calling_policy.preset,
+      });
+    } else {
+      // Close the dialog after adding (no policy prompt)
+      onClose();
+    }
   };
 
   const handleRequestInstallation = async (
@@ -456,6 +511,32 @@ export function ArchestraCatalogTab({
         server={requestServer}
         onClose={() => setRequestServer(null)}
       />
+
+      {policyDialogState && (
+        <PolicyConfigDialog
+          open={policyDialogState.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPolicyDialogState(null);
+              onClose();
+            }
+          }}
+          mcpServerName={policyDialogState.serverName}
+          onAccept={async () => {
+            await savePolicyMutation.mutateAsync({
+              catalogId: policyDialogState.catalogId,
+              preset: policyDialogState.preset,
+            });
+            setPolicyDialogState(null);
+            onClose();
+          }}
+          onSkip={() => {
+            setPolicyDialogState(null);
+            onClose();
+          }}
+          isLoading={savePolicyMutation.isPending}
+        />
+      )}
     </div>
   );
 }
@@ -523,6 +604,11 @@ function ServerCard({
         )}
         <TransportBadges
           isRemote={server.server.type === "remote"}
+          transportType={
+            server.server.type === "local" && server.server.env?.MCP_HTTP_PORT
+              ? "streamable-http"
+              : undefined
+          }
           className="mt-1"
         />
       </CardHeader>

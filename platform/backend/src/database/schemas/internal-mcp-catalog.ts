@@ -11,6 +11,7 @@ import type { InternalMcpCatalogServerType } from "@/types";
 const internalMcpCatalogTable = pgTable("internal_mcp_catalog", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  label: text("label"), // Display name (e.g., "Archestra Browser" vs technical name "archestra-browser")
   version: text("version"),
   description: text("description"),
   repository: text("repository"),
@@ -91,6 +92,11 @@ const internalMcpCatalogTable = pgTable("internal_mcp_catalog", {
     browser_auth?: boolean;
     streamable_http_url?: string;
     streamable_http_port?: number;
+  }>(),
+  // Tool calling policy preference (stored when adding from catalog with policy prompt)
+  toolCallingPolicy: jsonb("tool_calling_policy").$type<{
+    preset?: string;
+    applyOnAssignment?: boolean;
   }>(),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" })

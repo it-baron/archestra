@@ -54,7 +54,9 @@ export class Authnz {
       // Skip ACME challenge paths for SSL certificate domain validation
       url.startsWith("/.well-known/acme-challenge/") ||
       // Allow fetching public SSO providers list for login page (minimal info, no secrets)
-      (method === "GET" && url === "/api/sso-providers/public")
+      (method === "GET" && url === "/api/sso-providers/public") ||
+      // Archestra catalog proxy routes are public (mirrors external catalog behavior)
+      url.startsWith("/api/archestra-catalog")
     )
       return true;
     return false;

@@ -765,11 +765,13 @@ export function McpServerCard({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="text-lg font-semibold mb-1 cursor-help overflow-hidden whitespace-nowrap text-ellipsis w-full">
-                    {item.name}
+                    {item.label || item.name}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="max-w-xs break-words">{item.name}</p>
+                  <p className="max-w-xs break-words">
+                    {item.label || item.name}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

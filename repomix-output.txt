@@ -11428,6 +11428,35 @@ import {
 async function seedMockData()
 </file>
 
+<file path="platform/backend/src/types/agent-tool.ts">
+import {
+  createInsertSchema,
+  createSelectSchema,
+  createUpdateSchema,
+} from "drizzle-zod";
+import { z } from "zod";
+import { schema } from "@/database";
+import { UuidIdSchema } from "./api";
+import { ToolParametersContentSchema } from "./tool";
+⋮----
+export type AgentTool = z.infer<typeof SelectAgentToolSchema>;
+export type InsertAgentTool = z.infer<typeof InsertAgentToolSchema>;
+export type UpdateAgentTool = z.infer<typeof UpdateAgentToolSchema>;
+export type ToolResultTreatment = z.infer<typeof ToolResultTreatmentSchema>;
+export type AgentToolFilters = z.infer<typeof AgentToolFilterSchema>;
+export type AgentToolSortBy = z.infer<typeof AgentToolSortBySchema>;
+export type AgentToolSortDirection = z.infer<
+  typeof AgentToolSortDirectionSchema
+>;
+⋮----
+export type BulkUpdateAgentToolsRequest = z.infer<
+  typeof BulkUpdateAgentToolsRequestSchema
+>;
+export type BulkUpdateAgentToolsResponse = z.infer<
+  typeof BulkUpdateAgentToolsResponseSchema
+>;
+</file>
+
 <file path="platform/backend/src/types/prompt.ts">
 import {
   createInsertSchema,
@@ -12617,6 +12646,139 @@ import { describe, expect, test } from "@/test";
 import AgentToolModel from "./agent-tool";
 </file>
 
+<file path="platform/backend/src/models/agent-tool.ts">
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
+import db, { schema } from "@/database";
+import {
+  createPaginatedResult,
+  type PaginatedResult,
+} from "@/database/utils/pagination";
+import type {
+  AgentTool,
+  AgentToolFilters,
+  AgentToolSortBy,
+  AgentToolSortDirection,
+  InsertAgentTool,
+  PaginationQuery,
+  UpdateAgentTool,
+} from "@/types";
+import AgentTeamModel from "./agent-team";
+class AgentToolModel
+⋮----
+static async create(
+    agentId: string,
+    toolId: string,
+    options?: Partial<
+      Pick<
+        InsertAgentTool,
+        | "allowUsageWhenUntrustedDataIsPresent"
+        | "toolResultTreatment"
+        | "responseModifierTemplate"
+        | "credentialSourceMcpServerId"
+        | "executionSourceMcpServerId"
+      >
+    >,
+)
+static async delete(agentId: string, toolId: string): Promise<boolean>
+static async findToolIdsByAgent(agentId: string): Promise<string[]>
+static async findAgentIdsByTool(toolId: string): Promise<string[]>
+static async findAllAssignedToolIds(): Promise<string[]>
+static async exists(agentId: string, toolId: string): Promise<boolean>
+static async createIfNotExists(
+    agentId: string,
+    toolId: string,
+    credentialSourceMcpServerId?: string | null,
+    executionSourceMcpServerId?: string | null,
+)
+static async createManyIfNotExists(
+    agentId: string,
+    toolIds: string[],
+): Promise<void>
+static async bulkCreateForAgentsAndTools(
+    agentIds: string[],
+    toolIds: string[],
+    options?: Partial<
+      Pick<
+        InsertAgentTool,
+        | "allowUsageWhenUntrustedDataIsPresent"
+        | "toolResultTreatment"
+        | "responseModifierTemplate"
+        | "credentialSourceMcpServerId"
+        | "executionSourceMcpServerId"
+      >
+    >,
+): Promise<void>
+static async createOrUpdateCredentials(
+    agentId: string,
+    toolId: string,
+    credentialSourceMcpServerId?: string | null,
+    executionSourceMcpServerId?: string | null,
+): Promise<
+static async update(
+    id: string,
+    data: Partial<
+      Pick<
+        UpdateAgentTool,
+        | "allowUsageWhenUntrustedDataIsPresent"
+        | "toolResultTreatment"
+        | "responseModifierTemplate"
+        | "credentialSourceMcpServerId"
+        | "executionSourceMcpServerId"
+      >
+    >,
+)
+static async bulkUpdateSameValue(
+    ids: string[],
+    field: "allowUsageWhenUntrustedDataIsPresent" | "toolResultTreatment",
+    value: boolean | "trusted" | "sanitize_with_dual_llm" | "untrusted",
+): Promise<number>
+static async findAll(
+    userId?: string,
+    isAgentAdmin?: boolean,
+): Promise<AgentTool[]>
+static async findAllPaginated(
+    pagination: PaginationQuery,
+    sorting?: {
+      sortBy?: AgentToolSortBy;
+      sortDirection?: AgentToolSortDirection;
+    },
+    filters?: AgentToolFilters,
+    userId?: string,
+    isAgentAdmin?: boolean,
+): Promise<PaginatedResult<AgentTool>>
+⋮----
+// Filter by agent
+⋮----
+// Filter by origin (either "llm-proxy" or a catalogId)
+⋮----
+// LLM Proxy tools have null catalogId
+⋮----
+// Determine the ORDER BY clause based on sorting params
+⋮----
+// Sort by catalogId (null values last for LLM Proxy)
+⋮----
+static async getSecurityConfig(
+    agentId: string,
+    toolName: string,
+): Promise<
+static async cleanupInvalidCredentialSourcesForUser(
+    userId: string,
+    teamId: string,
+    isAgentAdmin: boolean,
+): Promise<number>
+</file>
+
 <file path="platform/backend/src/models/prompt.test.ts">
 import { describe, expect, test } from "@/test";
 import AgentModel from "./agent";
@@ -12848,35 +13010,6 @@ import {
   UuidIdSchema,
 } from "@/types";
 const promptRoutes: FastifyPluginAsyncZod = async (fastify) =>
-</file>
-
-<file path="platform/backend/src/types/agent-tool.ts">
-import {
-  createInsertSchema,
-  createSelectSchema,
-  createUpdateSchema,
-} from "drizzle-zod";
-import { z } from "zod";
-import { schema } from "@/database";
-import { UuidIdSchema } from "./api";
-import { ToolParametersContentSchema } from "./tool";
-⋮----
-export type AgentTool = z.infer<typeof SelectAgentToolSchema>;
-export type InsertAgentTool = z.infer<typeof InsertAgentToolSchema>;
-export type UpdateAgentTool = z.infer<typeof UpdateAgentToolSchema>;
-export type ToolResultTreatment = z.infer<typeof ToolResultTreatmentSchema>;
-export type AgentToolFilters = z.infer<typeof AgentToolFilterSchema>;
-export type AgentToolSortBy = z.infer<typeof AgentToolSortBySchema>;
-export type AgentToolSortDirection = z.infer<
-  typeof AgentToolSortDirectionSchema
->;
-⋮----
-export type BulkUpdateAgentToolsRequest = z.infer<
-  typeof BulkUpdateAgentToolsRequestSchema
->;
-export type BulkUpdateAgentToolsResponse = z.infer<
-  typeof BulkUpdateAgentToolsResponseSchema
->;
 </file>
 
 <file path="platform/backend/src/types/optimization-rule.ts">
@@ -13451,6 +13584,43 @@ import { formatCost } from "./cost";
 <div>Baseline:
 </file>
 
+<file path="platform/frontend/src/lib/agent-tools.query.ts">
+import { archestraApiSdk, type archestraApiTypes } from "@shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+⋮----
+type GetAllProfileToolsQueryParams = NonNullable<
+  archestraApiTypes.GetAllAgentToolsData["query"]
+>;
+export function useAllProfileTools({
+  initialData,
+  pagination,
+  sorting,
+  filters,
+}: {
+  initialData?: archestraApiTypes.GetAllAgentToolsResponses["200"];
+  pagination?: {
+    limit?: number;
+    offset?: number;
+  };
+  sorting?: {
+    sortBy?: NonNullable<GetAllProfileToolsQueryParams["sortBy"]>;
+    sortDirection?: NonNullable<GetAllProfileToolsQueryParams["sortDirection"]>;
+  };
+  filters?: {
+    search?: string;
+    agentId?: string;
+    origin?: string;
+    credentialSourceMcpServerId?: string;
+    mcpServerOwnerId?: string;
+  };
+})
+export function useAssignTool()
+export function useBulkAssignTools()
+export function useUnassignTool()
+export function useProfileToolPatchMutation()
+export function useBulkUpdateProfileTools()
+</file>
+
 <file path="platform/frontend/src/lib/policy.query.ts">
 import { archestraApiSdk, type archestraApiTypes } from "@shared";
 import {
@@ -13512,139 +13682,6 @@ import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 <file path="platform/backend/src/database/schemas/index.ts">
 
-</file>
-
-<file path="platform/backend/src/models/agent-tool.ts">
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  getTableColumns,
-  inArray,
-  or,
-  type SQL,
-  sql,
-} from "drizzle-orm";
-import db, { schema } from "@/database";
-import {
-  createPaginatedResult,
-  type PaginatedResult,
-} from "@/database/utils/pagination";
-import type {
-  AgentTool,
-  AgentToolFilters,
-  AgentToolSortBy,
-  AgentToolSortDirection,
-  InsertAgentTool,
-  PaginationQuery,
-  UpdateAgentTool,
-} from "@/types";
-import AgentTeamModel from "./agent-team";
-class AgentToolModel
-⋮----
-static async create(
-    agentId: string,
-    toolId: string,
-    options?: Partial<
-      Pick<
-        InsertAgentTool,
-        | "allowUsageWhenUntrustedDataIsPresent"
-        | "toolResultTreatment"
-        | "responseModifierTemplate"
-        | "credentialSourceMcpServerId"
-        | "executionSourceMcpServerId"
-      >
-    >,
-)
-static async delete(agentId: string, toolId: string): Promise<boolean>
-static async findToolIdsByAgent(agentId: string): Promise<string[]>
-static async findAgentIdsByTool(toolId: string): Promise<string[]>
-static async findAllAssignedToolIds(): Promise<string[]>
-static async exists(agentId: string, toolId: string): Promise<boolean>
-static async createIfNotExists(
-    agentId: string,
-    toolId: string,
-    credentialSourceMcpServerId?: string | null,
-    executionSourceMcpServerId?: string | null,
-)
-static async createManyIfNotExists(
-    agentId: string,
-    toolIds: string[],
-): Promise<void>
-static async bulkCreateForAgentsAndTools(
-    agentIds: string[],
-    toolIds: string[],
-    options?: Partial<
-      Pick<
-        InsertAgentTool,
-        | "allowUsageWhenUntrustedDataIsPresent"
-        | "toolResultTreatment"
-        | "responseModifierTemplate"
-        | "credentialSourceMcpServerId"
-        | "executionSourceMcpServerId"
-      >
-    >,
-): Promise<void>
-static async createOrUpdateCredentials(
-    agentId: string,
-    toolId: string,
-    credentialSourceMcpServerId?: string | null,
-    executionSourceMcpServerId?: string | null,
-): Promise<
-static async update(
-    id: string,
-    data: Partial<
-      Pick<
-        UpdateAgentTool,
-        | "allowUsageWhenUntrustedDataIsPresent"
-        | "toolResultTreatment"
-        | "responseModifierTemplate"
-        | "credentialSourceMcpServerId"
-        | "executionSourceMcpServerId"
-      >
-    >,
-)
-static async bulkUpdateSameValue(
-    ids: string[],
-    field: "allowUsageWhenUntrustedDataIsPresent" | "toolResultTreatment",
-    value: boolean | "trusted" | "sanitize_with_dual_llm" | "untrusted",
-): Promise<number>
-static async findAll(
-    userId?: string,
-    isAgentAdmin?: boolean,
-): Promise<AgentTool[]>
-static async findAllPaginated(
-    pagination: PaginationQuery,
-    sorting?: {
-      sortBy?: AgentToolSortBy;
-      sortDirection?: AgentToolSortDirection;
-    },
-    filters?: AgentToolFilters,
-    userId?: string,
-    isAgentAdmin?: boolean,
-): Promise<PaginatedResult<AgentTool>>
-⋮----
-// Filter by agent
-⋮----
-// Filter by origin (either "llm-proxy" or a catalogId)
-⋮----
-// LLM Proxy tools have null catalogId
-⋮----
-// Determine the ORDER BY clause based on sorting params
-⋮----
-// Sort by catalogId (null values last for LLM Proxy)
-⋮----
-static async getSecurityConfig(
-    agentId: string,
-    toolName: string,
-): Promise<
-static async cleanupInvalidCredentialSourcesForUser(
-    userId: string,
-    teamId: string,
-    isAgentAdmin: boolean,
-): Promise<number>
 </file>
 
 <file path="platform/backend/src/models/agent.test.ts">
@@ -14338,6 +14375,83 @@ const isDuplicateError = (error: unknown): boolean =>
 onOpenChange(newOpen);
 </file>
 
+<file path="platform/frontend/src/app/tools/_parts/assigned-tools-table.tsx">
+import type { archestraApiTypes } from "@shared";
+import type {
+  ColumnDef,
+  RowSelectionState,
+  SortingState,
+} from "@tanstack/react-table";
+import { ChevronDown, ChevronUp, Search, Unplug } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { DebouncedInput } from "@/components/debounced-input";
+import { InstallationSelect } from "@/components/installation-select";
+import { LoadingSpinner } from "@/components/loading";
+import { TokenSelect } from "@/components/token-select";
+import { TruncatedText } from "@/components/truncated-text";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable } from "@/components/ui/data-table";
+import { PermissionButton } from "@/components/ui/permission-button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useProfiles } from "@/lib/agent.query";
+import {
+  useAllProfileTools,
+  useBulkUpdateProfileTools,
+  useProfileToolPatchMutation,
+  useUnassignTool,
+} from "@/lib/agent-tools.query";
+import { useInternalMcpCatalog } from "@/lib/internal-mcp-catalog.query";
+import { useMcpServers } from "@/lib/mcp-server.query";
+import {
+  useToolInvocationPolicies,
+  useToolResultPolicies,
+} from "@/lib/policy.query";
+import { isMcpTool } from "@/lib/tool.utils";
+type GetAllProfileToolsQueryParams = NonNullable<
+  archestraApiTypes.GetAllAgentToolsData["query"]
+>;
+type ProfileToolsSortByValues = NonNullable<
+  GetAllProfileToolsQueryParams["sortBy"]
+> | null;
+type ProfileToolsSortDirectionValues = NonNullable<
+  GetAllProfileToolsQueryParams["sortDirection"]
+> | null;
+type ProfileToolData =
+  archestraApiTypes.GetAllAgentToolsResponses["200"]["data"][number];
+type ToolResultTreatment = ProfileToolData["toolResultTreatment"];
+interface AssignedToolsTableProps {
+  onToolClick: (tool: ProfileToolData) => void;
+}
+function SortIcon(
+⋮----
+onCheckedChange=
+⋮----
+const handleUnassign = async (e: React.MouseEvent) =>
+⋮----
+if (!isMcpTool(row.original.tool))
+⋮----
+onValueChange=
+</file>
+
 <file path="platform/frontend/src/app/tools/_parts/tool-details-dialog.tsx">
 import type { archestraApiTypes } from "@shared";
 import { TruncatedText } from "@/components/truncated-text";
@@ -14416,43 +14530,6 @@ function AttributePathExamples()
         variant="outline"
         className="w-full"
 onClick=
-</file>
-
-<file path="platform/frontend/src/lib/agent-tools.query.ts">
-import { archestraApiSdk, type archestraApiTypes } from "@shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-⋮----
-type GetAllProfileToolsQueryParams = NonNullable<
-  archestraApiTypes.GetAllAgentToolsData["query"]
->;
-export function useAllProfileTools({
-  initialData,
-  pagination,
-  sorting,
-  filters,
-}: {
-  initialData?: archestraApiTypes.GetAllAgentToolsResponses["200"];
-  pagination?: {
-    limit?: number;
-    offset?: number;
-  };
-  sorting?: {
-    sortBy?: NonNullable<GetAllProfileToolsQueryParams["sortBy"]>;
-    sortDirection?: NonNullable<GetAllProfileToolsQueryParams["sortDirection"]>;
-  };
-  filters?: {
-    search?: string;
-    agentId?: string;
-    origin?: string;
-    credentialSourceMcpServerId?: string;
-    mcpServerOwnerId?: string;
-  };
-})
-export function useAssignTool()
-export function useBulkAssignTools()
-export function useUnassignTool()
-export function useProfileToolPatchMutation()
-export function useBulkUpdateProfileTools()
 </file>
 
 <file path="platform/frontend/src/lib/config.ts">
@@ -14593,6 +14670,71 @@ static async rollback(
 static async delete(id: string): Promise<boolean>
 </file>
 
+<file path="platform/backend/src/routes/agent-tool.ts">
+import { RouteId } from "@shared";
+import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
+import { groupBy } from "lodash-es";
+import { z } from "zod";
+import { hasPermission } from "@/auth";
+import { clearChatMcpClient } from "@/clients/chat-mcp-client";
+import {
+  AgentModel,
+  AgentTeamModel,
+  AgentToolModel,
+  InternalMcpCatalogModel,
+  McpServerModel,
+  ToolModel,
+  UserModel,
+} from "@/models";
+import type { InternalMcpCatalog, Tool } from "@/types";
+import {
+  AgentToolFilterSchema,
+  AgentToolSortBySchema,
+  AgentToolSortDirectionSchema,
+  ApiError,
+  BulkUpdateAgentToolsRequestSchema,
+  BulkUpdateAgentToolsResponseSchema,
+  constructResponseSchema,
+  createPaginatedResponseSchema,
+  DeleteObjectResponseSchema,
+  PaginationQuerySchema,
+  SelectAgentToolSchema,
+  SelectToolSchema,
+  UpdateAgentToolSchema,
+  UuidIdSchema,
+} from "@/types";
+const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) =>
+export async function assignToolToAgent(
+  agentId: string,
+  toolId: string,
+  credentialSourceMcpServerId: string | null | undefined,
+  executionSourceMcpServerId: string | null | undefined,
+  preFetchedData?: {
+    existingAgentIds?: Set<string>;
+    toolsMap?: Map<string, Tool>;
+    catalogItemsMap?: Map<string, InternalMcpCatalog>;
+  },
+): Promise<
+  | {
+      status: 400 | 404;
+      error: { message: string; type: string };
+    }
+  | "duplicate"
+  | "updated"
+  | null
+> {
+  let agentExists: boolean;
+if (preFetchedData?.existingAgentIds)
+async function validateCredentialSource(
+  agentId: string,
+  credentialSourceMcpServerId: string,
+): Promise<
+async function validateExecutionSource(
+  toolId: string,
+  executionSourceMcpServerId: string,
+): Promise<
+</file>
+
 <file path="platform/backend/src/types/index.ts">
 
 </file>
@@ -14607,83 +14749,6 @@ const isSpecialAuthPage = (pathname: string) =>
 export const WithAuthCheck: React.FC<React.PropsWithChildren> = ({
   children,
 }) =>
-</file>
-
-<file path="platform/frontend/src/app/tools/_parts/assigned-tools-table.tsx">
-import type { archestraApiTypes } from "@shared";
-import type {
-  ColumnDef,
-  RowSelectionState,
-  SortingState,
-} from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, Search, Unplug } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
-import { DebouncedInput } from "@/components/debounced-input";
-import { InstallationSelect } from "@/components/installation-select";
-import { LoadingSpinner } from "@/components/loading";
-import { TokenSelect } from "@/components/token-select";
-import { TruncatedText } from "@/components/truncated-text";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import { Checkbox } from "@/components/ui/checkbox";
-import { DataTable } from "@/components/ui/data-table";
-import { PermissionButton } from "@/components/ui/permission-button";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useProfiles } from "@/lib/agent.query";
-import {
-  useAllProfileTools,
-  useBulkUpdateProfileTools,
-  useProfileToolPatchMutation,
-  useUnassignTool,
-} from "@/lib/agent-tools.query";
-import { useInternalMcpCatalog } from "@/lib/internal-mcp-catalog.query";
-import { useMcpServers } from "@/lib/mcp-server.query";
-import {
-  useToolInvocationPolicies,
-  useToolResultPolicies,
-} from "@/lib/policy.query";
-import { isMcpTool } from "@/lib/tool.utils";
-type GetAllProfileToolsQueryParams = NonNullable<
-  archestraApiTypes.GetAllAgentToolsData["query"]
->;
-type ProfileToolsSortByValues = NonNullable<
-  GetAllProfileToolsQueryParams["sortBy"]
-> | null;
-type ProfileToolsSortDirectionValues = NonNullable<
-  GetAllProfileToolsQueryParams["sortDirection"]
-> | null;
-type ProfileToolData =
-  archestraApiTypes.GetAllAgentToolsResponses["200"]["data"][number];
-type ToolResultTreatment = ProfileToolData["toolResultTreatment"];
-interface AssignedToolsTableProps {
-  onToolClick: (tool: ProfileToolData) => void;
-}
-function SortIcon(
-⋮----
-onCheckedChange=
-⋮----
-const handleUnassign = async (e: React.MouseEvent) =>
-⋮----
-if (!isMcpTool(row.original.tool))
-⋮----
-onValueChange=
 </file>
 
 <file path="platform/frontend/src/components/chat/mcp-tools-display.tsx">
@@ -14793,71 +14858,6 @@ import {
 } from "@/types";
 import { PROXY_API_PREFIX } from "./common";
 import { MockOpenAIClient } from "./mock-openai-client";
-</file>
-
-<file path="platform/backend/src/routes/agent-tool.ts">
-import { RouteId } from "@shared";
-import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { groupBy } from "lodash-es";
-import { z } from "zod";
-import { hasPermission } from "@/auth";
-import { clearChatMcpClient } from "@/clients/chat-mcp-client";
-import {
-  AgentModel,
-  AgentTeamModel,
-  AgentToolModel,
-  InternalMcpCatalogModel,
-  McpServerModel,
-  ToolModel,
-  UserModel,
-} from "@/models";
-import type { InternalMcpCatalog, Tool } from "@/types";
-import {
-  AgentToolFilterSchema,
-  AgentToolSortBySchema,
-  AgentToolSortDirectionSchema,
-  ApiError,
-  BulkUpdateAgentToolsRequestSchema,
-  BulkUpdateAgentToolsResponseSchema,
-  constructResponseSchema,
-  createPaginatedResponseSchema,
-  DeleteObjectResponseSchema,
-  PaginationQuerySchema,
-  SelectAgentToolSchema,
-  SelectToolSchema,
-  UpdateAgentToolSchema,
-  UuidIdSchema,
-} from "@/types";
-const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) =>
-export async function assignToolToAgent(
-  agentId: string,
-  toolId: string,
-  credentialSourceMcpServerId: string | null | undefined,
-  executionSourceMcpServerId: string | null | undefined,
-  preFetchedData?: {
-    existingAgentIds?: Set<string>;
-    toolsMap?: Map<string, Tool>;
-    catalogItemsMap?: Map<string, InternalMcpCatalog>;
-  },
-): Promise<
-  | {
-      status: 400 | 404;
-      error: { message: string; type: string };
-    }
-  | "duplicate"
-  | "updated"
-  | null
-> {
-  let agentExists: boolean;
-if (preFetchedData?.existingAgentIds)
-async function validateCredentialSource(
-  agentId: string,
-  credentialSourceMcpServerId: string,
-): Promise<
-async function validateExecutionSource(
-  toolId: string,
-  executionSourceMcpServerId: string,
-): Promise<
 </file>
 
 <file path="platform/backend/src/routes/index.ts">
@@ -15223,6 +15223,26 @@ type ProfileActionsProps = {
 onClick=
 </file>
 
+<file path="platform/shared/access-control.ts">
+import { createAccessControl } from "better-auth/plugins/access";
+import { defaultStatements } from "better-auth/plugins/organization/access";
+import { z } from "zod";
+⋮----
+export type Resource = z.infer<typeof ResourceSchema>;
+export type Action = z.infer<typeof ActionSchema>;
+export type Permission =
+  | `${Resource}:${"create" | "read" | "update" | "delete"}`
+  | "profile:admin"
+  | "mcpServer:admin"
+  | "mcpServerInstallationRequest:admin"
+  | "invitation:cancel";
+export type Permissions = z.infer<typeof PermissionsSchema>;
+export type PredefinedRoleName = z.infer<typeof PredefinedRoleNameSchema>;
+export type AnyRoleName = z.infer<typeof AnyRoleName>;
+⋮----
+export type RouteId = (typeof RouteId)[keyof typeof RouteId];
+</file>
+
 <file path="platform/frontend/src/app/chat/page.tsx">
 import type { UIMessage } from "@ai-sdk/react";
 import { Eye, EyeOff, Plus } from "lucide-react";
@@ -15345,26 +15365,6 @@ interface PromptDialogProps {
 // if on create and no agentId, set the first agent
 ⋮----
 const handleSave = async () =>
-</file>
-
-<file path="platform/shared/access-control.ts">
-import { createAccessControl } from "better-auth/plugins/access";
-import { defaultStatements } from "better-auth/plugins/organization/access";
-import { z } from "zod";
-⋮----
-export type Resource = z.infer<typeof ResourceSchema>;
-export type Action = z.infer<typeof ActionSchema>;
-export type Permission =
-  | `${Resource}:${"create" | "read" | "update" | "delete"}`
-  | "profile:admin"
-  | "mcpServer:admin"
-  | "mcpServerInstallationRequest:admin"
-  | "invitation:cancel";
-export type Permissions = z.infer<typeof PermissionsSchema>;
-export type PredefinedRoleName = z.infer<typeof PredefinedRoleNameSchema>;
-export type AnyRoleName = z.infer<typeof AnyRoleName>;
-⋮----
-export type RouteId = (typeof RouteId)[keyof typeof RouteId];
 </file>
 
 <file path="platform/Dockerfile">

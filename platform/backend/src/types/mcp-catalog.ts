@@ -9,6 +9,12 @@ import { schema } from "@/database";
 
 export const InternalMcpCatalogServerTypeSchema = z.enum(["local", "remote"]);
 
+// Tool calling policy schema for catalog items
+const ToolCallingPolicySchema = z.object({
+  preset: z.string().optional(),
+  applyOnAssignment: z.boolean().optional(),
+});
+
 // Define Zod schemas for complex JSONB fields
 const AuthFieldSchema = z.object({
   name: z.string(),
@@ -64,6 +70,7 @@ export const SelectInternalMcpCatalogSchema = createSelectSchema(
   userConfig: z.record(z.string(), UserConfigFieldSchema).nullable(),
   oauthConfig: OAuthConfigSchema.nullable(),
   localConfig: LocalConfigSelectSchema.nullable(),
+  toolCallingPolicy: ToolCallingPolicySchema.nullable(),
 });
 
 export const InsertInternalMcpCatalogSchema = createInsertSchema(
@@ -78,6 +85,7 @@ export const InsertInternalMcpCatalogSchema = createInsertSchema(
       .optional(),
     oauthConfig: OAuthConfigSchema.nullable().optional(),
     localConfig: LocalConfigSchema.nullable().optional(),
+    toolCallingPolicy: ToolCallingPolicySchema.nullable().optional(),
   })
   .omit({
     id: true,
@@ -97,6 +105,7 @@ export const UpdateInternalMcpCatalogSchema = createUpdateSchema(
       .optional(),
     oauthConfig: OAuthConfigSchema.nullable().optional(),
     localConfig: LocalConfigSchema.nullable().optional(),
+    toolCallingPolicy: ToolCallingPolicySchema.nullable().optional(),
   })
   .omit({
     id: true,

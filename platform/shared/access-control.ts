@@ -342,6 +342,11 @@ export const RouteId = {
   CreateOptimizationRule: "createOptimizationRule",
   UpdateOptimizationRule: "updateOptimizationRule",
   DeleteOptimizationRule: "deleteOptimizationRule",
+
+  // Archestra Catalog Proxy Routes (public - no auth required)
+  SearchArchestraCatalog: "searchArchestraCatalog",
+  GetArchestraCatalogServer: "getArchestraCatalogServer",
+  GetArchestraCatalogCategories: "getArchestraCatalogCategories",
 } as const;
 
 export type RouteId = (typeof RouteId)[keyof typeof RouteId];

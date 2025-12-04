@@ -3989,6 +3989,259 @@ export type AnthropicMessagesWithAgentResponses = {
 
 export type AnthropicMessagesWithAgentResponse = AnthropicMessagesWithAgentResponses[keyof AnthropicMessagesWithAgentResponses];
 
+export type SearchArchestraCatalogData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+        category?: string;
+        limit?: number;
+        offset?: number;
+        sortBy?: string;
+    };
+    url: '/api/archestra-catalog/search';
+};
+
+export type SearchArchestraCatalogErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type SearchArchestraCatalogError = SearchArchestraCatalogErrors[keyof SearchArchestraCatalogErrors];
+
+export type SearchArchestraCatalogResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        servers: Array<{
+            name: string;
+            display_name?: string;
+            description?: string;
+            category?: string;
+            [key: string]: unknown | string | undefined;
+        }>;
+        totalCount?: number;
+        limit?: number;
+        offset?: number;
+        hasMore?: boolean;
+    };
+};
+
+export type SearchArchestraCatalogResponse = SearchArchestraCatalogResponses[keyof SearchArchestraCatalogResponses];
+
+export type GetArchestraCatalogServerData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/api/archestra-catalog/server/{name}';
+};
+
+export type GetArchestraCatalogServerErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetArchestraCatalogServerError = GetArchestraCatalogServerErrors[keyof GetArchestraCatalogServerErrors];
+
+export type GetArchestraCatalogServerResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        name: string;
+        display_name?: string;
+        description?: string;
+        category?: string;
+        [key: string]: unknown | string | undefined;
+    };
+};
+
+export type GetArchestraCatalogServerResponse = GetArchestraCatalogServerResponses[keyof GetArchestraCatalogServerResponses];
+
+export type GetArchestraCatalogCategoriesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/archestra-catalog/category';
+};
+
+export type GetArchestraCatalogCategoriesErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetArchestraCatalogCategoriesError = GetArchestraCatalogCategoriesErrors[keyof GetArchestraCatalogCategoriesErrors];
+
+export type GetArchestraCatalogCategoriesResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        categories: Array<string>;
+    };
+};
+
+export type GetArchestraCatalogCategoriesResponse = GetArchestraCatalogCategoriesResponses[keyof GetArchestraCatalogCategoriesResponses];
+
 export type GetDefaultCredentialsStatusData = {
     body?: never;
     path?: never;
@@ -7174,6 +7427,7 @@ export type GetInternalMcpCatalogResponses = {
     200: Array<{
         id: string;
         name: string;
+        label: string | null;
         version: string | null;
         description: string | null;
         repository: string | null;
@@ -7241,6 +7495,10 @@ export type GetInternalMcpCatalogResponses = {
             streamable_http_url?: string;
             streamable_http_port?: number;
         } | null;
+        toolCallingPolicy: {
+            preset?: string;
+            applyOnAssignment?: boolean;
+        } | null;
         createdAt: string;
         updatedAt: string;
     }>;
@@ -7251,6 +7509,7 @@ export type GetInternalMcpCatalogResponse = GetInternalMcpCatalogResponses[keyof
 export type CreateInternalMcpCatalogItemData = {
     body: {
         name: string;
+        label?: string | null;
         version?: string | null;
         description?: string | null;
         repository?: string | null;
@@ -7317,6 +7576,10 @@ export type CreateInternalMcpCatalogItemData = {
             browser_auth?: boolean;
             streamable_http_url?: string;
             streamable_http_port?: number;
+        } | null;
+        toolCallingPolicy?: {
+            preset?: string;
+            applyOnAssignment?: boolean;
         } | null;
     };
     path?: never;
@@ -7390,6 +7653,7 @@ export type CreateInternalMcpCatalogItemResponses = {
     200: {
         id: string;
         name: string;
+        label: string | null;
         version: string | null;
         description: string | null;
         repository: string | null;
@@ -7456,6 +7720,10 @@ export type CreateInternalMcpCatalogItemResponses = {
             browser_auth?: boolean;
             streamable_http_url?: string;
             streamable_http_port?: number;
+        } | null;
+        toolCallingPolicy: {
+            preset?: string;
+            applyOnAssignment?: boolean;
         } | null;
         createdAt: string;
         updatedAt: string;
@@ -7618,6 +7886,7 @@ export type GetInternalMcpCatalogItemResponses = {
     200: {
         id: string;
         name: string;
+        label: string | null;
         version: string | null;
         description: string | null;
         repository: string | null;
@@ -7685,6 +7954,10 @@ export type GetInternalMcpCatalogItemResponses = {
             streamable_http_url?: string;
             streamable_http_port?: number;
         } | null;
+        toolCallingPolicy: {
+            preset?: string;
+            applyOnAssignment?: boolean;
+        } | null;
         createdAt: string;
         updatedAt: string;
     };
@@ -7695,6 +7968,7 @@ export type GetInternalMcpCatalogItemResponse = GetInternalMcpCatalogItemRespons
 export type UpdateInternalMcpCatalogItemData = {
     body?: {
         name?: string;
+        label?: string | null;
         version?: string | null;
         description?: string | null;
         repository?: string | null;
@@ -7761,6 +8035,10 @@ export type UpdateInternalMcpCatalogItemData = {
             browser_auth?: boolean;
             streamable_http_url?: string;
             streamable_http_port?: number;
+        } | null;
+        toolCallingPolicy?: {
+            preset?: string;
+            applyOnAssignment?: boolean;
         } | null;
     };
     path: {
@@ -7836,6 +8114,7 @@ export type UpdateInternalMcpCatalogItemResponses = {
     200: {
         id: string;
         name: string;
+        label: string | null;
         version: string | null;
         description: string | null;
         repository: string | null;
@@ -7902,6 +8181,10 @@ export type UpdateInternalMcpCatalogItemResponses = {
             browser_auth?: boolean;
             streamable_http_url?: string;
             streamable_http_port?: number;
+        } | null;
+        toolCallingPolicy: {
+            preset?: string;
+            applyOnAssignment?: boolean;
         } | null;
         createdAt: string;
         updatedAt: string;
