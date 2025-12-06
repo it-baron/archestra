@@ -315,3 +315,17 @@ export function usePromptTools(promptId: string | undefined) {
     gcTime: 10 * 60 * 1000,
   });
 }
+
+export function useHasPlaywrightMcpTools(agentId: string | undefined) {
+  const toolsQuery = useChatProfileMcpTools(agentId);
+
+  return (
+    toolsQuery.data?.some((tool) => {
+      const toolName = tool.name;
+      return (
+        typeof toolName === "string" &&
+        (toolName.includes("playwright") || toolName.startsWith("browser_"))
+      );
+    }) ?? false
+  );
+}

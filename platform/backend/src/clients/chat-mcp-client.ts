@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { isArchestraMcpServerTool, TimeInMs } from "@shared";
-import { jsonSchema, type Tool } from "ai";
+import { jsonSchema, type JSONSchema7, type Tool } from "ai";
 import {
   type ArchestraContext,
   executeArchestraTool,
@@ -396,23 +396,29 @@ export async function getChatMcpClient(
 /**
  * Validate and normalize JSON Schema for OpenAI
  */
-// biome-ignore lint/suspicious/noExplicitAny: JSON Schema structure is dynamic and varies by tool
-function normalizeJsonSchema(schema: any): any {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeJsonSchema(schema: unknown): JSONSchema7 {
+  const fallbackSchema: JSONSchema7 = { type: "object", properties: {} };
+
   // If schema is missing or invalid, return a minimal valid schema
-  if (
-    !schema ||
-    !schema.type ||
-    schema.type === "None" ||
-    schema.type === "null"
-  ) {
-    return {
-      type: "object",
-      properties: {},
-    };
+  if (!isRecord(schema)) {
+    return fallbackSchema;
+  }
+
+  const schemaType = schema.type;
+  if (typeof schemaType !== "string") {
+    return fallbackSchema;
+  }
+
+  if (schemaType === "None" || schemaType === "null") {
+    return fallbackSchema;
   }
 
   // Return the schema as-is if it's already valid JSON Schema
-  return schema;
+  return schema as JSONSchema7;
 }
 
 /**
@@ -529,12 +535,13 @@ export async function getChatMcpTools({
         aiTools[mcpTool.name] = {
           description: mcpTool.description || `Tool: ${mcpTool.name}`,
           inputSchema: jsonSchema(normalizedSchema),
-          // biome-ignore lint/suspicious/noExplicitAny: Tool execute function requires flexible typing for MCP integration
-          execute: async (args: any) => {
+          execute: async (args: unknown) => {
             logger.info(
               { agentId, userId, toolName: mcpTool.name, arguments: args },
               "Executing MCP tool from chat (direct)",
             );
+
+            const toolArguments = isRecord(args) ? args : undefined;
 
             try {
               // Check if this is an Archestra tool - handle directly without DB lookup
@@ -546,7 +553,7 @@ export async function getChatMcpTools({
 
                 const archestraResponse = await executeArchestraTool(
                   mcpTool.name,
-                  args,
+                  toolArguments,
                   {
                     profile: { id: agentId, name: agentName },
                     conversationId,
@@ -600,7 +607,7 @@ export async function getChatMcpTools({
               const toolCall = {
                 id: randomUUID(),
                 name: mcpTool.name,
-                arguments: args || {},
+                arguments: toolArguments ?? {},
               };
 
               const result = await mcpClient.executeToolCall(
