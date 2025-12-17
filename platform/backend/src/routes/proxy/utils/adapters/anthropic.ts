@@ -25,6 +25,34 @@ import type {
 
 type AnthropicMessages = Anthropic.Types.MessagesRequest["messages"];
 
+type AnthropicToolResultImageBlock = {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;
+    data: string;
+  };
+};
+
+type AnthropicToolResultTextBlock = {
+  type: "text";
+  text: string;
+};
+
+type AnthropicToolResultContentBlock =
+  | AnthropicToolResultImageBlock
+  | AnthropicToolResultTextBlock;
+
+type AnthropicToolResultContent = string | AnthropicToolResultContentBlock[];
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * Convert Anthropic messages to common format for trusted data evaluation
  */
@@ -204,17 +232,48 @@ export function toolCallsToCommon(
 /**
  * Check if content array contains image blocks from MCP
  */
-function hasImageContent(
-  content: unknown,
-): content is Array<{ type: string; data?: string; mimeType?: string }> {
+function hasImageContent(content: unknown): boolean {
   if (!Array.isArray(content)) return false;
   return content.some(
-    (item) =>
-      typeof item === "object" &&
-      item !== null &&
-      "type" in item &&
-      item.type === "image",
+    (item) => isMcpImageBlock(item) || isAnthropicImageBlock(item),
   );
+}
+
+function isMcpImageBlock(
+  item: unknown,
+): item is { type: "image"; data: string; mimeType?: string } {
+  if (typeof item !== "object" || item === null) return false;
+  if (!("type" in item) || item.type !== "image") return false;
+  return "data" in item && typeof item.data === "string";
+}
+
+function isAnthropicImageBlock(
+  item: unknown,
+): item is AnthropicToolResultImageBlock {
+  if (typeof item !== "object" || item === null) return false;
+  if (!("type" in item) || item.type !== "image") return false;
+  if (
+    !("source" in item) ||
+    typeof item.source !== "object" ||
+    item.source === null
+  ) {
+    return false;
+  }
+
+  const source = item.source as Record<string, unknown>;
+  return (
+    source.type === "base64" &&
+    typeof source.media_type === "string" &&
+    typeof source.data === "string"
+  );
+}
+
+function isAnthropicTextBlock(
+  item: unknown,
+): item is AnthropicToolResultTextBlock {
+  if (typeof item !== "object" || item === null) return false;
+  if (!("type" in item) || item.type !== "text") return false;
+  return "text" in item && typeof item.text === "string";
 }
 
 /**
@@ -223,7 +282,7 @@ function hasImageContent(
  */
 function convertMcpContentToAnthropic(
   content: unknown,
-): string | Array<{ type: string; [key: string]: unknown }> {
+): AnthropicToolResultContent {
   if (!Array.isArray(content)) {
     return JSON.stringify(content);
   }
@@ -235,13 +294,12 @@ function convertMcpContentToAnthropic(
   }
 
   // Convert to Anthropic content blocks format
-  const anthropicContent: Array<{ type: string; [key: string]: unknown }> = [];
+  const anthropicContent: AnthropicToolResultContentBlock[] = [];
 
   for (const item of content) {
     if (typeof item !== "object" || item === null) continue;
 
-    if ("type" in item && item.type === "image" && "data" in item) {
-      // Convert MCP image to Anthropic image block
+    if (isMcpImageBlock(item)) {
       const mimeType =
         "mimeType" in item && typeof item.mimeType === "string"
           ? item.mimeType
@@ -254,11 +312,14 @@ function convertMcpContentToAnthropic(
           data: item.data,
         },
       });
+    } else if (isAnthropicImageBlock(item)) {
+      anthropicContent.push(item);
+    } else if (isAnthropicTextBlock(item)) {
+      anthropicContent.push(item);
     } else if ("type" in item && item.type === "text" && "text" in item) {
-      // Keep text blocks
       anthropicContent.push({
         type: "text",
-        text: item.text,
+        text: typeof item.text === "string" ? item.text : JSON.stringify(item),
       });
     }
   }
@@ -279,7 +340,7 @@ export function toolResultsToMessages(
   content: Array<{
     type: "tool_result";
     tool_use_id: string;
-    content: string | Array<{ type: string; [key: string]: unknown }>;
+    content: AnthropicToolResultContent;
     is_error?: boolean;
   }>;
 }> {
@@ -291,7 +352,7 @@ export function toolResultsToMessages(
     {
       role: "user" as const,
       content: results.map((result) => {
-        let content: string | Array<{ type: string; [key: string]: unknown }>;
+        let content: AnthropicToolResultContent;
         if (result.isError) {
           content = `Error: ${result.error || "Tool execution failed"}`;
         } else if (hasImageContent(result.content)) {
