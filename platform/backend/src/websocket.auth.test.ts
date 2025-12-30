@@ -77,7 +77,7 @@ describe("websocket browser-stream authorization", () => {
     await service.handleMessage(
       {
         type: "subscribe_browser_stream",
-        payload: { conversationId: conversation.id, tabIndex: 0 },
+        payload: { conversationId: conversation.id },
       },
       ws,
     );

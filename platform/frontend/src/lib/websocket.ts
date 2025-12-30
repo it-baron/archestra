@@ -5,7 +5,7 @@ type ClientWebSocketMessage =
   | { type: "hello-world"; payload: Record<string, never> }
   | {
       type: "subscribe_browser_stream";
-      payload: { conversationId: string; tabIndex: number };
+      payload: { conversationId: string };
     }
   | {
       type: "unsubscribe_browser_stream";

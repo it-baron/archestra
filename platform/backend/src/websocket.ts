@@ -20,7 +20,6 @@ const SCREENSHOT_INTERVAL_MS = 1000; // Stream at ~1 FPS
 interface BrowserStreamSubscription {
   conversationId: string;
   agentId: string;
-  tabIndex: number;
   userContext: BrowserUserContext;
   intervalId: NodeJS.Timeout;
 }
@@ -148,7 +147,6 @@ class WebSocketService {
         await this.handleSubscribeBrowserStream(
           ws,
           message.payload.conversationId,
-          message.payload.tabIndex,
           clientContext,
         );
         break;
@@ -214,7 +212,6 @@ class WebSocketService {
   private async handleSubscribeBrowserStream(
     ws: WebSocket,
     conversationId: string,
-    tabIndex: number,
     clientContext: WebSocketClientContext,
   ): Promise<void> {
     // Unsubscribe from any existing stream first
@@ -246,7 +243,7 @@ class WebSocketService {
     }
 
     logger.info(
-      { conversationId, agentId, tabIndex },
+      { conversationId, agentId },
       "Browser stream client subscribed",
     );
 
@@ -255,15 +252,15 @@ class WebSocketService {
       userIsProfileAdmin: clientContext.userIsProfileAdmin,
     };
 
-    // Select or create the tab for this chat index
+    // Select or create the tab for this conversation
     const tabResult = await this.browserService.selectOrCreateTab(
       agentId,
-      tabIndex,
+      conversationId,
       userContext,
     );
     if (!tabResult.success) {
       logger.warn(
-        { conversationId, agentId, tabIndex, error: tabResult.error },
+        { conversationId, agentId, error: tabResult.error },
         "Failed to select/create browser tab",
       );
       // Continue anyway - screenshot will work on current tab
@@ -285,7 +282,6 @@ class WebSocketService {
     this.browserSubscriptions.set(ws, {
       conversationId,
       agentId,
-      tabIndex,
       userContext,
       intervalId,
     });

@@ -38,7 +38,6 @@ interface BrowserPanelProps {
   isOpen: boolean;
   onClose: () => void;
   conversationId: string | undefined;
-  tabIndex: number; // Tab index based on chat position in list
 }
 
 // Fixed size for the browser viewport (matches typical browser dimensions)
@@ -48,7 +47,6 @@ const PANEL_HEIGHT = 600;
 export function BrowserPanel({
   isOpen,
   onClose,
-  tabIndex,
   conversationId,
 }: BrowserPanelProps) {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -220,11 +218,10 @@ export function BrowserPanel({
 
     // Send subscribe message after a short delay to ensure connection is ready
     const subscribeTimeout = setTimeout(() => {
-      // Cast needed as tabIndex is not in OpenAPI-generated types
       websocketService.send({
         type: "subscribe_browser_stream",
-        payload: { conversationId, tabIndex },
-      } as Parameters<typeof websocketService.send>[0]);
+        payload: { conversationId },
+      });
       subscribedConversationIdRef.current = conversationId;
     }, 100);
 
@@ -248,7 +245,7 @@ export function BrowserPanel({
         subscribedConversationIdRef.current = null;
       }
     };
-  }, [isOpen, conversationId, tabIndex]);
+  }, [isOpen, conversationId]);
 
   // Navigate to URL via WebSocket
   const handleNavigate = useCallback(

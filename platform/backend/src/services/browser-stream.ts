@@ -60,7 +60,15 @@ interface SnapshotResult {
  * Maps conversationId to browser tab index
  * Each conversation gets its own browser tab
  */
-const conversationTabMap = new Map<string, number>();
+type ConversationTabKey = `${string}:${string}:${string}`;
+
+const conversationTabMap = new Map<ConversationTabKey, number>();
+
+const toConversationTabKey = (
+  agentId: string,
+  userId: string,
+  conversationId: string,
+): ConversationTabKey => `${agentId}:${userId}:${conversationId}`;
 
 /**
  * Service for browser streaming via Playwright MCP
@@ -144,18 +152,18 @@ export class BrowserStreamService {
   }
 
   /**
-   * Select or create a browser tab by index
+   * Select or create a browser tab for a conversation
    * Uses Playwright MCP browser_tabs tool
    */
   async selectOrCreateTab(
     agentId: string,
-    tabIndex: number,
+    conversationId: string,
     userContext: BrowserUserContext,
   ): Promise<TabResult> {
     const tabsTool = await this.findTabsTool(agentId);
     if (!tabsTool) {
       logger.info(
-        { agentId, tabIndex },
+        { agentId, conversationId },
         "No browser_tabs tool available, using shared browser page",
       );
       return { success: true, tabIndex: 0 };
@@ -167,13 +175,41 @@ export class BrowserStreamService {
       userContext.userIsProfileAdmin,
     );
     if (!client) {
-      throw new ApiError(500, "Failed to connect to MCP Gateway");
+      return { success: false, error: "Failed to connect to MCP Gateway" };
     }
 
-    try {
-      logger.info({ agentId, tabIndex }, "Selecting/creating browser tab");
+    const tabKey = toConversationTabKey(
+      agentId,
+      userContext.userId,
+      conversationId,
+    );
 
-      // First, list existing tabs (use "action" param like the old activateTab code)
+    try {
+      const existingTabIndex = conversationTabMap.get(tabKey);
+
+      if (existingTabIndex !== undefined) {
+        const selectExistingResult = await client.callTool({
+          name: tabsTool,
+          arguments: { action: "select", index: existingTabIndex },
+        });
+
+        if (!selectExistingResult.isError) {
+          return { success: true, tabIndex: existingTabIndex };
+        }
+
+        const errorText = this.extractTextContent(selectExistingResult.content);
+        logger.warn(
+          {
+            agentId,
+            conversationId,
+            tabIndex: existingTabIndex,
+            error: errorText,
+          },
+          "Failed to select existing conversation tab, creating a new one",
+        );
+        conversationTabMap.delete(tabKey);
+      }
+
       const listResult = await client.callTool({
         name: tabsTool,
         arguments: { action: "list" },
@@ -181,55 +217,51 @@ export class BrowserStreamService {
 
       if (listResult.isError) {
         const errorText = this.extractTextContent(listResult.content);
-        logger.warn(
-          { agentId, error: errorText },
-          "Failed to list tabs, using default page",
-        );
-        return { success: true, tabIndex: 0 };
+        return { success: false, error: errorText || "Failed to list tabs" };
       }
 
-      const tabsList = this.parseTabsList(listResult.content);
-      const existingCount = tabsList.length;
+      const existingTabs = this.parseTabsList(listResult.content);
+      const expectedNewTabIndex = existingTabs.length;
 
-      logger.info({ agentId, existingCount, tabIndex }, "Current tabs count");
-
-      // Create tabs until we have enough
-      for (let i = existingCount; i <= tabIndex; i++) {
-        logger.info(
-          { agentId, creatingTabIndex: i },
-          "Creating new browser tab",
-        );
-        const createResult = await client.callTool({
-          name: tabsTool,
-          arguments: { action: "new" },
-        });
-        if (createResult.isError) {
-          logger.warn({ agentId, i }, "Failed to create tab, stopping");
-          break;
-        }
-      }
-
-      // Select the target tab
-      const selectResult = await client.callTool({
+      const createResult = await client.callTool({
         name: tabsTool,
-        arguments: { action: "select", index: tabIndex },
+        arguments: { action: "new" },
       });
 
-      if (selectResult.isError) {
-        const errorText = this.extractTextContent(selectResult.content);
-        logger.warn(
-          { agentId, tabIndex, error: errorText },
-          "Failed to select tab, using default",
-        );
-        // Don't fail - just use whatever tab is active
-        return { success: true, tabIndex: 0 };
+      if (createResult.isError) {
+        const errorText = this.extractTextContent(createResult.content);
+        return { success: false, error: errorText || "Failed to create tab" };
       }
 
-      return { success: true, tabIndex };
+      const postCreateList = await client.callTool({
+        name: tabsTool,
+        arguments: { action: "list" },
+      });
+
+      const resolvedTabIndex = postCreateList.isError
+        ? expectedNewTabIndex
+        : Math.max(0, this.parseTabsList(postCreateList.content).length - 1);
+
+      const selectNewResult = await client.callTool({
+        name: tabsTool,
+        arguments: { action: "select", index: resolvedTabIndex },
+      });
+
+      if (selectNewResult.isError) {
+        const errorText = this.extractTextContent(selectNewResult.content);
+        return { success: false, error: errorText || "Failed to select tab" };
+      }
+
+      conversationTabMap.set(tabKey, resolvedTabIndex);
+      return { success: true, tabIndex: resolvedTabIndex };
     } catch (error) {
-      logger.error({ error, agentId, tabIndex }, "Tab select/create failed");
-      // Don't fail - just use whatever tab is active
-      return { success: true, tabIndex: 0 };
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.error(
+        { error, agentId, conversationId },
+        "Tab select/create failed",
+      );
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -283,12 +315,21 @@ export class BrowserStreamService {
    */
   async navigate(
     agentId: string,
-    _conversationId: string,
+    conversationId: string,
     url: string,
     userContext: BrowserUserContext,
   ): Promise<NavigateResult> {
-    // Note: Tab is already selected during subscription via selectOrCreateTab
-    // Do NOT call activateTab here as it creates a new blank tab
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
 
     const toolName = await this.findNavigateTool(agentId);
     if (!toolName) {
@@ -330,11 +371,20 @@ export class BrowserStreamService {
    */
   async navigateBack(
     agentId: string,
-    _conversationId: string,
+    conversationId: string,
     userContext: BrowserUserContext,
   ): Promise<NavigateResult> {
-    // Note: Tab is already selected during subscription via selectOrCreateTab
-    // Do NOT call activateTab here as it creates a new blank tab
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
 
     const toolName = await this.findNavigateBackTool(agentId);
     if (!toolName) {
@@ -384,90 +434,16 @@ export class BrowserStreamService {
       throw new ApiError(400, "No browser tabs tool available for this agent");
     }
 
-    const client = await getChatMcpClient(
+    const result = await this.selectOrCreateTab(
       agentId,
-      userContext.userId,
-      userContext.userIsProfileAdmin,
+      conversationId,
+      userContext,
     );
-    if (!client) {
-      throw new ApiError(500, "Failed to connect to MCP Gateway");
+    if (!result.success) {
+      throw new ApiError(500, result.error ?? "Failed to activate tab");
     }
 
-    // Check if this conversation already has a tab
-    const existingTabIndex = conversationTabMap.get(conversationId);
-
-    if (existingTabIndex !== undefined) {
-      // Select existing tab
-      logger.info(
-        { agentId, conversationId, tabIndex: existingTabIndex },
-        "Selecting existing browser tab for conversation",
-      );
-
-      const result = await client.callTool({
-        name: tabsTool,
-        arguments: { action: "select", index: existingTabIndex },
-      });
-
-      if (result.isError) {
-        // Tab might have been closed, create a new one
-        logger.warn(
-          { agentId, conversationId, tabIndex: existingTabIndex },
-          "Failed to select tab, creating new one",
-        );
-        conversationTabMap.delete(conversationId);
-        return this.createNewTab(client, tabsTool, agentId, conversationId);
-      }
-
-      return {
-        success: true,
-        tabIndex: existingTabIndex,
-      };
-    }
-
-    // Create new tab for this conversation
-    return this.createNewTab(client, tabsTool, agentId, conversationId);
-  }
-
-  /**
-   * Create a new browser tab for a conversation
-   */
-  private async createNewTab(
-    client: Awaited<ReturnType<typeof getChatMcpClient>>,
-    tabsTool: string,
-    agentId: string,
-    conversationId: string,
-  ): Promise<TabResult> {
-    if (!client) {
-      throw new ApiError(500, "No MCP client");
-    }
-
-    logger.info(
-      { agentId, conversationId },
-      "Creating new browser tab for conversation",
-    );
-
-    const result = await client.callTool({
-      name: tabsTool,
-      arguments: { action: "new" },
-    });
-
-    if (result.isError) {
-      const errorText = this.extractTextContent(result.content);
-      throw new ApiError(500, errorText || "Failed to create tab");
-    }
-
-    // Parse the result to get the new tab index
-    const textContent = this.extractTextContent(result.content);
-    const tabIndex = this.parseTabIndex(textContent);
-
-    if (tabIndex !== undefined) {
-      conversationTabMap.set(conversationId, tabIndex);
-    }
-
-    return {
-      success: true,
-      tabIndex,
-    };
+    return result;
   }
 
   /**
@@ -516,14 +492,19 @@ export class BrowserStreamService {
     conversationId: string,
     userContext: BrowserUserContext,
   ): Promise<TabResult> {
-    const tabIndex = conversationTabMap.get(conversationId);
+    const tabKey = toConversationTabKey(
+      agentId,
+      userContext.userId,
+      conversationId,
+    );
+    const tabIndex = conversationTabMap.get(tabKey);
     if (tabIndex === undefined) {
       return { success: true }; // No tab to close
     }
 
     const tabsTool = await this.findTabsTool(agentId);
     if (!tabsTool) {
-      conversationTabMap.delete(conversationId);
+      conversationTabMap.delete(tabKey);
       return { success: true };
     }
 
@@ -533,7 +514,7 @@ export class BrowserStreamService {
       userContext.userIsProfileAdmin,
     );
     if (!client) {
-      conversationTabMap.delete(conversationId);
+      conversationTabMap.delete(tabKey);
       return { success: true };
     }
 
@@ -543,23 +524,14 @@ export class BrowserStreamService {
         arguments: { action: "close", index: tabIndex },
       });
 
-      conversationTabMap.delete(conversationId);
+      conversationTabMap.delete(tabKey);
 
       return { success: true };
     } catch (error) {
       logger.error({ error, agentId, conversationId }, "Failed to close tab");
-      conversationTabMap.delete(conversationId);
+      conversationTabMap.delete(tabKey);
       return { success: true }; // Consider success even if close fails
     }
-  }
-
-  /**
-   * Parse tab index from tool response
-   */
-  private parseTabIndex(content: string): number | undefined {
-    // Try to find tab index in response like "Tab 2 created" or "index: 2"
-    const match = content.match(/(?:tab\s*|index[:\s]*)\s*(\d+)/i);
-    return match ? Number.parseInt(match[1], 10) : undefined;
   }
 
   /**
@@ -574,9 +546,23 @@ export class BrowserStreamService {
 
     // Try to parse JSON if content is JSON
     try {
-      const parsed = JSON.parse(textContent);
+      const parsed: unknown = JSON.parse(textContent);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.map((item, index) => {
+          if (typeof item === "object" && item !== null) {
+            const rawTitle =
+              "title" in item ? (item as { title?: unknown }).title : undefined;
+            const rawUrl =
+              "url" in item ? (item as { url?: unknown }).url : undefined;
+            const title = typeof rawTitle === "string" ? rawTitle : undefined;
+            const url = typeof rawUrl === "string" ? rawUrl : undefined;
+            return { index, title, url };
+          }
+          if (typeof item === "string") {
+            return { index, title: item };
+          }
+          return { index };
+        });
       }
     } catch {
       // Not JSON, try line-by-line parsing
@@ -604,6 +590,18 @@ export class BrowserStreamService {
     conversationId: string,
     userContext: BrowserUserContext,
   ): Promise<ScreenshotResult> {
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
+
     const toolName = await this.findScreenshotTool(agentId);
     if (!toolName) {
       throw new ApiError(
@@ -792,8 +790,17 @@ export class BrowserStreamService {
     x?: number,
     y?: number,
   ): Promise<ClickResult> {
-    // Note: Tab is already selected during subscription via selectOrCreateTab
-    // Do NOT call activateTab here as it creates a new blank tab
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
 
     const client = await getChatMcpClient(
       agentId,
@@ -899,8 +906,17 @@ export class BrowserStreamService {
     text: string,
     element?: string,
   ): Promise<TypeResult> {
-    // Note: Tab is already selected during subscription via selectOrCreateTab
-    // Do NOT call activateTab here as it creates a new blank tab
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
 
     const client = await getChatMcpClient(
       agentId,
@@ -988,8 +1004,17 @@ export class BrowserStreamService {
     userContext: BrowserUserContext,
     key: string,
   ): Promise<ScrollResult> {
-    // Note: Tab is already selected during subscription via selectOrCreateTab
-    // Do NOT call activateTab here as it creates a new blank tab
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
 
     const toolName = await this.findPressKeyTool(agentId);
     if (!toolName) {
@@ -1034,8 +1059,17 @@ export class BrowserStreamService {
     conversationId: string,
     userContext: BrowserUserContext,
   ): Promise<SnapshotResult> {
-    // Note: Tab is already selected during subscription via selectOrCreateTab
-    // Do NOT call activateTab here as it creates a new blank tab
+    const tabResult = await this.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+    if (!tabResult.success) {
+      throw new ApiError(
+        500,
+        tabResult.error ?? "Failed to select browser tab",
+      );
+    }
 
     const toolName = await this.findSnapshotTool(agentId);
     if (!toolName) {

@@ -41,7 +41,6 @@ import { useProfiles } from "@/lib/agent.query";
 import { useHasPermissions } from "@/lib/auth.query";
 import {
   useConversation,
-  useConversations,
   useCreateConversation,
   useHasPlaywrightMcpTools,
   useUpdateConversation,
@@ -205,11 +204,6 @@ export default function ChatPage() {
   }, [initialModel, modelsByProvider]);
 
   const chatSession = useChatSession(conversationId);
-
-  // Calculate tab index based on conversation position in list
-  const tabIndex = conversationId
-    ? allConversations.findIndex((c) => c.id === conversationId)
-    : 0;
 
   // Check if API key is configured for any provider
   const { data: chatApiKeys = [], isLoading: isLoadingApiKeys } =
@@ -1079,7 +1073,6 @@ export default function ChatPage() {
           isOpen={isBrowserPanelOpen}
           onClose={() => setIsBrowserPanelOpen(false)}
           conversationId={conversationId}
-          tabIndex={tabIndex >= 0 ? tabIndex : 0}
         />
       )}
 

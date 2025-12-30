@@ -8,7 +8,8 @@ const HelloWorldWebsocketPayloadSchema = z.object({});
 // Browser stream payloads
 const SubscribeBrowserStreamPayloadSchema = z.object({
   conversationId: z.string().uuid(),
-  tabIndex: z.number().int().min(0), // Tab index based on chat position in list
+  // Deprecated: tabIndex was derived from chat list ordering and is ignored.
+  tabIndex: z.number().int().min(0).optional(),
 });
 
 const UnsubscribeBrowserStreamPayloadSchema = z.object({
