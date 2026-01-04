@@ -640,7 +640,10 @@ export class BrowserStreamService {
     // Extract screenshot from MCP response
     // Playwright MCP returns screenshots as base64 images in content array
     const screenshot = this.extractScreenshot(result.content);
-    const url = this.extractUrl(result.content);
+
+    // Get URL reliably using browser_evaluate instead of extracting from screenshot response
+    // This ensures the URL matches the page content shown in the screenshot
+    const url = await this.getCurrentUrl(agentId, userContext);
 
     return {
       screenshot,
@@ -696,18 +699,6 @@ export class BrowserStreamService {
     }
 
     return undefined;
-  }
-
-  /**
-   * Extract URL from MCP response (if available)
-   */
-  private extractUrl(content: unknown): string | undefined {
-    const textContent = this.extractTextContent(content);
-    // Try to find URL in the response - matches http://, https://, or about:
-    const urlMatch = textContent.match(
-      /(?:https?|about):\/\/[^\s)]+|about:[^\s)]+/,
-    );
-    return urlMatch?.[0];
   }
 
   /**
