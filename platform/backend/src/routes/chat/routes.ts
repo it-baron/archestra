@@ -27,6 +27,7 @@ import {
   getSecretValueForLlmProviderApiKey,
   secretManager,
 } from "@/secrets-manager";
+import { BrowserStreamService } from "@/services/browser-stream";
 import {
   createLLMModelForAgent,
   detectProviderFromModel,
@@ -649,6 +650,29 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async ({ params: { id }, user, organizationId }, reply) => {
+      // Get conversation to retrieve agentId before deletion
+      const conversation = await ConversationModel.findById({
+        id,
+        userId: user.id,
+        organizationId,
+      });
+
+      if (conversation) {
+        // Close browser tab for this conversation (best effort, don't fail if it errors)
+        try {
+          const browserService = new BrowserStreamService();
+          await browserService.closeTab(conversation.agentId, id, {
+            userId: user.id,
+            userIsProfileAdmin: false,
+          });
+        } catch (error) {
+          logger.warn(
+            { error, conversationId: id },
+            "Failed to close browser tab on conversation deletion",
+          );
+        }
+      }
+
       await ConversationModel.delete(id, user.id, organizationId);
       return reply.send({ success: true });
     },

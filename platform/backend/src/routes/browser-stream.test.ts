@@ -8,6 +8,7 @@ import { BrowserStreamService } from "@/services/browser-stream";
 import { beforeEach, describe, expect, test, vi } from "@/test";
 import type { User } from "@/types";
 import browserStreamRoutes from "./browser-stream";
+import chatRoutes from "./chat/routes";
 
 const buildAppWithUser = async (user: User, organizationId: string) => {
   const app = Fastify({ logger: false })
@@ -101,6 +102,69 @@ describe("browser-stream routes authorization", () => {
       tools: ["browser_navigate"],
     });
     expect(availabilitySpy).toHaveBeenCalledWith(agent.id);
+
+    await app.close();
+  });
+});
+
+const buildAppWithChatRoutes = async (user: User, organizationId: string) => {
+  const app = Fastify({ logger: false })
+    .withTypeProvider<ZodTypeProvider>()
+    .setValidatorCompiler(validatorCompiler)
+    .setSerializerCompiler(serializerCompiler);
+
+  app.decorateRequest("user");
+  app.decorateRequest("organizationId");
+  app.addHook("preHandler", async (request) => {
+    request.user = user;
+    request.organizationId = organizationId;
+  });
+
+  await app.register(chatRoutes);
+  await app.ready();
+  return app;
+};
+
+describe("browser tab cleanup on conversation deletion", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("closes browser tab when conversation is deleted via API", async ({
+    makeAgent,
+    makeConversation,
+    makeOrganization,
+    makeUser,
+  }) => {
+    const org = await makeOrganization();
+    const owner = (await makeUser()) as User;
+    const agent = await makeAgent();
+    const conversation = await makeConversation(agent.id, {
+      userId: owner.id,
+      organizationId: org.id,
+    });
+
+    // Mock the closeTab method to track if it's called
+    const closeTabSpy = vi
+      .spyOn(BrowserStreamService.prototype, "closeTab")
+      .mockResolvedValue({ success: true });
+
+    // Build app with chat routes and delete the conversation via API
+    const app = await buildAppWithChatRoutes(owner, org.id);
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/chat/conversations/${conversation.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    // Verify closeTab was called with the correct arguments
+    expect(closeTabSpy).toHaveBeenCalledWith(
+      agent.id,
+      conversation.id,
+      expect.objectContaining({ userId: owner.id }),
+    );
 
     await app.close();
   });
