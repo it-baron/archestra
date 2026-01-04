@@ -407,6 +407,78 @@ export function toolResultsToMessages(
   ];
 }
 
+/**
+ * Convert MCP image blocks to Anthropic image format in tool results
+ * This should be called unconditionally to ensure images are properly formatted
+ */
+export function convertMcpImagesToAnthropicFormat(
+  messages: AnthropicMessages,
+): AnthropicMessages {
+  return messages.map((message) => {
+    // Only process user messages with content arrays that contain tool_result blocks
+    if (message.role === "user" && Array.isArray(message.content)) {
+      const updatedContent = message.content.map((contentBlock) => {
+        if (contentBlock.type === "tool_result" && !contentBlock.is_error) {
+          const toolResultContent: unknown = contentBlock.content;
+          if (Array.isArray(toolResultContent)) {
+            const updatedBlocks = toolResultContent.map(
+              (block): AnthropicToolResultContentBlock => {
+                if (
+                  isAnthropicImageBlock(block) ||
+                  isAnthropicTextBlock(block)
+                ) {
+                  return block;
+                }
+
+                if (isMcpImageBlock(block)) {
+                  const mimeType = block.mimeType ?? "image/png";
+                  logger.info(
+                    {
+                      toolCallId: contentBlock.tool_use_id,
+                      mimeType,
+                      dataLength: block.data.length,
+                    },
+                    "Converting MCP image block to Anthropic image format",
+                  );
+                  return {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: mimeType,
+                      data: block.data,
+                    },
+                  };
+                }
+
+                return {
+                  type: "text",
+                  text:
+                    typeof block === "string"
+                      ? block
+                      : safeJsonStringify(block),
+                };
+              },
+            );
+
+            return {
+              ...contentBlock,
+              content: updatedBlocks,
+            };
+          }
+        }
+        return contentBlock;
+      });
+
+      return {
+        ...message,
+        content: updatedContent,
+      };
+    }
+
+    return message;
+  });
+}
+
 /** Returns input and output usage tokens */
 export function getUsageTokens(usage: Anthropic.Types.Usage) {
   return {

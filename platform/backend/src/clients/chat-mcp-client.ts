@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { isArchestraMcpServerTool, TimeInMs } from "@shared";
-import { jsonSchema, type JSONSchema7, type Tool } from "ai";
+import { type JSONSchema7, jsonSchema, type Tool } from "ai";
 import {
   type ArchestraContext,
   executeArchestraTool,
@@ -18,6 +18,30 @@ import {
   ToolModel,
   UserTokenModel,
 } from "@/models";
+
+/**
+ * Check if a tool is a browser-related tool that needs tab selection
+ */
+function isBrowserTool(toolName: string): boolean {
+  return toolName.includes("playwright") || toolName.startsWith("browser_");
+}
+
+/**
+ * Lazily loaded BrowserStreamService to avoid circular dependency
+ * browser-stream.ts imports from chat-mcp-client.ts, so we can't import at module level
+ */
+type BrowserStreamServiceType = InstanceType<
+  typeof import("@/services/browser-stream").BrowserStreamService
+>;
+let _browserStreamService: BrowserStreamServiceType | null = null;
+
+async function getBrowserStreamService(): Promise<BrowserStreamServiceType> {
+  if (!_browserStreamService) {
+    const { BrowserStreamService } = await import("@/services/browser-stream");
+    _browserStreamService = new BrowserStreamService();
+  }
+  return _browserStreamService;
+}
 
 /**
  * MCP Gateway base URL (internal)
@@ -431,6 +455,7 @@ function normalizeJsonSchema(schema: unknown): JSONSchema7 {
  * @param enabledToolIds - Optional array of tool IDs to filter by. Empty array = all tools enabled.
  * @param promptId - Optional prompt ID for agent tools lookup
  * @param organizationId - Optional organization ID for agent tools lookup
+ * @param conversationId - Optional conversation ID for browser tab selection
  * @returns Record of tool name to AI SDK Tool object
  */
 export async function getChatMcpTools({
@@ -442,6 +467,7 @@ export async function getChatMcpTools({
   conversationId,
   promptId,
   organizationId,
+  conversationId,
 }: {
   agentName: string;
   agentId: string;
@@ -451,6 +477,7 @@ export async function getChatMcpTools({
   conversationId?: string;
   promptId?: string;
   organizationId?: string;
+  conversationId?: string;
 }): Promise<Record<string, Tool>> {
   const toolCacheKey = getToolCacheKey(agentId, userId, promptId);
 
@@ -544,6 +571,31 @@ export async function getChatMcpTools({
             const toolArguments = isRecord(args) ? args : undefined;
 
             try {
+              // For browser tools, ensure the correct conversation tab is selected first
+              if (conversationId && isBrowserTool(mcpTool.name)) {
+                logger.info(
+                  { agentId, userId, conversationId, toolName: mcpTool.name },
+                  "Selecting conversation browser tab before executing browser tool",
+                );
+                const browserService = await getBrowserStreamService();
+                const tabResult = await browserService.selectOrCreateTab(
+                  agentId,
+                  conversationId,
+                  { userId, userIsProfileAdmin },
+                );
+                if (!tabResult.success) {
+                  logger.warn(
+                    {
+                      agentId,
+                      conversationId,
+                      toolName: mcpTool.name,
+                      error: tabResult.error,
+                    },
+                    "Failed to select conversation tab for browser tool, continuing anyway",
+                  );
+                }
+              }
+
               // Check if this is an Archestra tool - handle directly without DB lookup
               if (isArchestraMcpServerTool(mcpTool.name)) {
                 logger.info(
