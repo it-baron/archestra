@@ -27,20 +27,21 @@ function isBrowserTool(toolName: string): boolean {
 }
 
 /**
- * Lazily loaded BrowserStreamService to avoid circular dependency
+ * Lazily loaded browserStreamFeature to avoid circular dependency
  * browser-stream.ts imports from chat-mcp-client.ts, so we can't import at module level
  */
-type BrowserStreamServiceType = InstanceType<
-  typeof import("@/services/browser-stream").BrowserStreamService
->;
-let _browserStreamService: BrowserStreamServiceType | null = null;
+type BrowserStreamFeatureType =
+  typeof import("@/services/browser-stream-feature").browserStreamFeature;
+let _browserStreamFeature: BrowserStreamFeatureType | null = null;
 
-async function getBrowserStreamService(): Promise<BrowserStreamServiceType> {
-  if (!_browserStreamService) {
-    const { BrowserStreamService } = await import("@/services/browser-stream");
-    _browserStreamService = new BrowserStreamService();
+async function getBrowserStreamFeature(): Promise<BrowserStreamFeatureType> {
+  if (!_browserStreamFeature) {
+    const { browserStreamFeature } = await import(
+      "@/services/browser-stream-feature"
+    );
+    _browserStreamFeature = browserStreamFeature;
   }
-  return _browserStreamService;
+  return _browserStreamFeature;
 }
 
 /**
@@ -572,13 +573,18 @@ export async function getChatMcpTools({
 
             try {
               // For browser tools, ensure the correct conversation tab is selected first
-              if (conversationId && isBrowserTool(mcpTool.name)) {
+              // Only if browser streaming feature is enabled
+              const browserFeature = await getBrowserStreamFeature();
+              if (
+                conversationId &&
+                isBrowserTool(mcpTool.name) &&
+                browserFeature.isEnabled()
+              ) {
                 logger.info(
                   { agentId, userId, conversationId, toolName: mcpTool.name },
                   "Selecting conversation browser tab before executing browser tool",
                 );
-                const browserService = await getBrowserStreamService();
-                const tabResult = await browserService.selectOrCreateTab(
+                const tabResult = await browserFeature.selectOrCreateTab(
                   agentId,
                   conversationId,
                   { userId, userIsProfileAdmin },

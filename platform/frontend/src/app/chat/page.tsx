@@ -55,6 +55,7 @@ import {
   useChatApiKeys,
 } from "@/lib/chat-settings.query";
 import { useDialogs } from "@/lib/dialog.hook";
+import { useFeatureFlag } from "@/lib/features.hook";
 import { useFeatures } from "@/lib/features.query";
 import {
   applyPendingActions,
@@ -319,6 +320,9 @@ export default function ChatPage() {
 
   // Check if Playwright MCP is available for browser panel
   const hasPlaywrightMcp = useHasPlaywrightMcpTools(currentProfileId);
+
+  // Check if browser streaming feature is enabled
+  const isBrowserStreamingEnabled = useFeatureFlag("browserStreamingEnabled");
 
   // Clear MCP Gateway sessions when opening a NEW conversation
   useEffect(() => {
@@ -775,7 +779,7 @@ export default function ChatPage() {
               )}
             </div>
             <div className="flex-1 flex justify-end gap-2 items-center">
-              {hasPlaywrightMcp && (
+              {hasPlaywrightMcp && isBrowserStreamingEnabled && (
                 <Button
                   variant={isBrowserPanelOpen ? "secondary" : "ghost"}
                   size="sm"
@@ -1068,7 +1072,7 @@ export default function ChatPage() {
         onSuccess={() => router.push("/mcp-catalog/registry")}
       />
 
-      {isBrowserPanelOpen && (
+      {isBrowserPanelOpen && isBrowserStreamingEnabled && (
         <BrowserPanel
           isOpen={isBrowserPanelOpen}
           onClose={() => setIsBrowserPanelOpen(false)}

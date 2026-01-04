@@ -1,13 +1,11 @@
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { hasPermission } from "@/auth";
 import logger from "@/logging";
 import { ConversationModel } from "@/models";
-import {
-  BrowserStreamService,
-  type BrowserUserContext,
-} from "@/services/browser-stream";
+import type { BrowserUserContext } from "@/services/browser-stream";
+import { browserStreamFeature } from "@/services/browser-stream-feature";
 import { ApiError, constructResponseSchema } from "@/types";
 
 const ConversationParamsSchema = z.object({
@@ -19,7 +17,32 @@ const NavigateBodySchema = z.object({
 });
 
 const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
-  const browserStreamService = new BrowserStreamService();
+  // When feature is disabled, register stub routes that return 404
+  if (!browserStreamFeature.isEnabled()) {
+    const disabledHandler = async (_req: FastifyRequest, reply: FastifyReply) =>
+      reply.status(404).send({
+        error: { message: "Browser streaming feature is disabled" },
+      });
+
+    fastify.get(
+      "/api/browser-stream/:conversationId/available",
+      disabledHandler,
+    );
+    fastify.post(
+      "/api/browser-stream/:conversationId/navigate",
+      disabledHandler,
+    );
+    fastify.get(
+      "/api/browser-stream/:conversationId/screenshot",
+      disabledHandler,
+    );
+    fastify.post(
+      "/api/browser-stream/:conversationId/activate",
+      disabledHandler,
+    );
+    fastify.delete("/api/browser-stream/:conversationId/tab", disabledHandler);
+    return;
+  }
 
   /**
    * Helper to get agentId from conversationId
@@ -83,7 +106,7 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
       }
 
       try {
-        const result = await browserStreamService.checkAvailability(agentId);
+        const result = await browserStreamFeature.checkAvailability(agentId);
         return reply.send(result);
       } catch (error) {
         if (error instanceof ApiError) {
@@ -132,7 +155,7 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       try {
         const userContext = await getUserContext(request);
-        const result = await browserStreamService.navigate(
+        const result = await browserStreamFeature.navigate(
           agentId,
           conversationId,
           url,
@@ -181,7 +204,7 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       try {
         const userContext = await getUserContext(request);
-        const result = await browserStreamService.takeScreenshot(
+        const result = await browserStreamFeature.takeScreenshot(
           agentId,
           conversationId,
           userContext,
@@ -226,7 +249,7 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       try {
         const userContext = await getUserContext(request);
-        const result = await browserStreamService.activateTab(
+        const result = await browserStreamFeature.activateTab(
           agentId,
           conversationId,
           userContext,
@@ -274,7 +297,7 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       try {
         const userContext = await getUserContext(request);
-        const result = await browserStreamService.closeTab(
+        const result = await browserStreamFeature.closeTab(
           agentId,
           conversationId,
           userContext,

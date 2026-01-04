@@ -5,10 +5,8 @@ import { betterAuth, hasPermission } from "@/auth";
 import config from "@/config";
 import logger from "@/logging";
 import { ConversationModel, UserModel } from "@/models";
-import {
-  BrowserStreamService,
-  type BrowserUserContext,
-} from "@/services/browser-stream";
+import type { BrowserUserContext } from "@/services/browser-stream";
+import { browserStreamFeature } from "@/services/browser-stream-feature";
 import {
   type ServerWebSocketMessage,
   type WebSocketMessage,
@@ -32,7 +30,6 @@ interface WebSocketClientContext {
 
 class WebSocketService {
   private wss: WebSocketServer | null = null;
-  private browserService = new BrowserStreamService();
   // Track browser stream subscriptions per client
   private browserSubscriptions: Map<WebSocket, BrowserStreamSubscription> =
     new Map();
@@ -135,6 +132,27 @@ class WebSocketService {
   ): Promise<void> {
     const clientContext = this.getClientContext(ws);
     if (!clientContext) {
+      return;
+    }
+
+    // Check if browser streaming feature is enabled for browser-related messages
+    if (
+      browserStreamFeature.isBrowserWebSocketMessage(message.type) &&
+      !browserStreamFeature.isEnabled()
+    ) {
+      this.sendToClient(ws, {
+        type: "browser_stream_error",
+        payload: {
+          conversationId:
+            "payload" in message &&
+            message.payload &&
+            typeof message.payload === "object" &&
+            "conversationId" in message.payload
+              ? String(message.payload.conversationId)
+              : "",
+          error: "Browser streaming feature is disabled",
+        },
+      });
       return;
     }
 
@@ -253,7 +271,7 @@ class WebSocketService {
     };
 
     // Select or create the tab for this conversation
-    const tabResult = await this.browserService.selectOrCreateTab(
+    const tabResult = await browserStreamFeature.selectOrCreateTab(
       agentId,
       conversationId,
       userContext,
@@ -324,7 +342,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.navigate(
+      const result = await browserStreamFeature.navigate(
         subscription.agentId,
         conversationId,
         url,
@@ -373,7 +391,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.navigateBack(
+      const result = await browserStreamFeature.navigateBack(
         subscription.agentId,
         conversationId,
         subscription.userContext,
@@ -424,7 +442,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.click(
+      const result = await browserStreamFeature.click(
         subscription.agentId,
         conversationId,
         subscription.userContext,
@@ -479,7 +497,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.type(
+      const result = await browserStreamFeature.type(
         subscription.agentId,
         conversationId,
         subscription.userContext,
@@ -529,7 +547,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.pressKey(
+      const result = await browserStreamFeature.pressKey(
         subscription.agentId,
         conversationId,
         subscription.userContext,
@@ -576,7 +594,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.getSnapshot(
+      const result = await browserStreamFeature.getSnapshot(
         subscription.agentId,
         conversationId,
         subscription.userContext,
@@ -615,7 +633,7 @@ class WebSocketService {
     }
 
     try {
-      const result = await this.browserService.takeScreenshot(
+      const result = await browserStreamFeature.takeScreenshot(
         agentId,
         conversationId,
         userContext,

@@ -27,7 +27,7 @@ import {
   getSecretValueForLlmProviderApiKey,
   secretManager,
 } from "@/secrets-manager";
-import { BrowserStreamService } from "@/services/browser-stream";
+import { browserStreamFeature } from "@/services/browser-stream-feature";
 import {
   createLLMModelForAgent,
   detectProviderFromModel,
@@ -657,11 +657,10 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         organizationId,
       });
 
-      if (conversation) {
+      if (conversation && browserStreamFeature.isEnabled()) {
         // Close browser tab for this conversation (best effort, don't fail if it errors)
         try {
-          const browserService = new BrowserStreamService();
-          await browserService.closeTab(conversation.agentId, id, {
+          await browserStreamFeature.closeTab(conversation.agentId, id, {
             userId: user.id,
             userIsProfileAdmin: false,
           });

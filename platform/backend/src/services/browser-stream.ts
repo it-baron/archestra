@@ -11,47 +11,47 @@ export interface BrowserUserContext {
   userIsProfileAdmin: boolean;
 }
 
-interface AvailabilityResult {
+export interface AvailabilityResult {
   available: boolean;
   tools?: string[];
   error?: string;
 }
 
-interface NavigateResult {
+export interface NavigateResult {
   success: boolean;
   url?: string;
   error?: string;
 }
 
-interface ScreenshotResult {
+export interface ScreenshotResult {
   screenshot?: string;
   url?: string;
   error?: string;
 }
 
-interface TabResult {
+export interface TabResult {
   success: boolean;
   tabIndex?: number;
   tabs?: Array<{ index: number; title?: string; url?: string }>;
   error?: string;
 }
 
-interface ClickResult {
+export interface ClickResult {
   success: boolean;
   error?: string;
 }
 
-interface TypeResult {
+export interface TypeResult {
   success: boolean;
   error?: string;
 }
 
-interface ScrollResult {
+export interface ScrollResult {
   success: boolean;
   error?: string;
 }
 
-interface SnapshotResult {
+export interface SnapshotResult {
   snapshot?: string;
   error?: string;
 }
@@ -64,11 +64,21 @@ type ConversationTabKey = `${string}:${string}:${string}`;
 
 const conversationTabMap = new Map<ConversationTabKey, number>();
 
+/**
+ * Tracks which agent+user combos have been cleaned up after server restart.
+ * On first browser panel open after restart, we close all orphaned tabs.
+ */
+type AgentUserKey = `${string}:${string}`;
+const cleanedUpAgents = new Set<AgentUserKey>();
+
 const toConversationTabKey = (
   agentId: string,
   userId: string,
   conversationId: string,
 ): ConversationTabKey => `${agentId}:${userId}:${conversationId}`;
+
+const toAgentUserKey = (agentId: string, userId: string): AgentUserKey =>
+  `${agentId}:${userId}`;
 
 /**
  * Service for browser streaming via Playwright MCP
@@ -152,6 +162,78 @@ export class BrowserStreamService {
   }
 
   /**
+   * Clean up orphaned browser tabs after server restart.
+   * Closes all tabs except tab 0 (default tab) to start fresh.
+   * Called once per agent+user combination after restart.
+   */
+  private async cleanupOrphanedTabs(
+    agentId: string,
+    userContext: BrowserUserContext,
+    tabsTool: string,
+    client: NonNullable<Awaited<ReturnType<typeof getChatMcpClient>>>,
+  ): Promise<void> {
+    const agentUserKey = toAgentUserKey(agentId, userContext.userId);
+
+    // Skip if already cleaned up
+    if (cleanedUpAgents.has(agentUserKey)) {
+      return;
+    }
+
+    // Mark as cleaned up immediately to prevent concurrent cleanup attempts
+    cleanedUpAgents.add(agentUserKey);
+
+    try {
+      // List all existing tabs
+      const listResult = await client.callTool({
+        name: tabsTool,
+        arguments: { action: "list" },
+      });
+
+      if (listResult.isError) {
+        logger.warn(
+          { agentId, userId: userContext.userId },
+          "Failed to list tabs for cleanup",
+        );
+        return;
+      }
+
+      const tabs = this.parseTabsList(listResult.content);
+
+      // Close all tabs except tab 0 (close in reverse order to avoid index shifts)
+      if (tabs.length > 1) {
+        logger.info(
+          { agentId, userId: userContext.userId, tabCount: tabs.length },
+          "Cleaning up orphaned browser tabs after restart",
+        );
+
+        for (let i = tabs.length - 1; i > 0; i--) {
+          try {
+            await client.callTool({
+              name: tabsTool,
+              arguments: { action: "close", index: i },
+            });
+          } catch (error) {
+            logger.warn(
+              { agentId, userId: userContext.userId, tabIndex: i, error },
+              "Failed to close orphaned tab",
+            );
+          }
+        }
+
+        logger.info(
+          { agentId, userId: userContext.userId },
+          "Finished cleaning up orphaned browser tabs",
+        );
+      }
+    } catch (error) {
+      logger.error(
+        { agentId, userId: userContext.userId, error },
+        "Error during orphaned tabs cleanup",
+      );
+    }
+  }
+
+  /**
    * Select or create a browser tab for a conversation
    * Uses Playwright MCP browser_tabs tool
    */
@@ -177,6 +259,9 @@ export class BrowserStreamService {
     if (!client) {
       return { success: false, error: "Failed to connect to MCP Gateway" };
     }
+
+    // Clean up orphaned tabs on first access after server restart
+    await this.cleanupOrphanedTabs(agentId, userContext, tabsTool, client);
 
     const tabKey = toConversationTabKey(
       agentId,
@@ -702,14 +787,15 @@ export class BrowserStreamService {
   }
 
   /**
-   * Get current page URL using browser_evaluate
+   * Get current page URL using browser_tabs
+   * Parses the current tab's URL from the tabs list
    */
   async getCurrentUrl(
     agentId: string,
     userContext: BrowserUserContext,
   ): Promise<string | undefined> {
-    const evaluateTool = await this.findEvaluateTool(agentId);
-    if (!evaluateTool) {
+    const tabsTool = await this.findTabsTool(agentId);
+    if (!tabsTool) {
       return undefined;
     }
 
@@ -724,8 +810,8 @@ export class BrowserStreamService {
 
     try {
       const result = await client.callTool({
-        name: evaluateTool,
-        arguments: { expression: "window.location.href" },
+        name: tabsTool,
+        arguments: { action: "list" },
       });
 
       if (result.isError) {
@@ -733,11 +819,12 @@ export class BrowserStreamService {
       }
 
       const textContent = this.extractTextContent(result.content);
-      // The result might be quoted or contain extra text
-      const urlMatch = textContent.match(
-        /(?:https?|about):\/\/[^\s"')]+|about:[^\s"')]+/,
+      // Parse the current tab's URL from format like:
+      // "- 1: (current) [Title] (https://example.com)"
+      const currentTabMatch = textContent.match(
+        /\(current\)[^\(]*\(((?:https?|about):\/\/[^)]+)\)/,
       );
-      return urlMatch?.[0];
+      return currentTabMatch?.[1];
     } catch {
       return undefined;
     }

@@ -4,11 +4,29 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
+import { vi } from "vitest";
+import type * as originalConfigModule from "@/config";
 import { BrowserStreamService } from "@/services/browser-stream";
-import { beforeEach, describe, expect, test, vi } from "@/test";
+import { beforeEach, describe, expect, test } from "@/test";
 import type { User } from "@/types";
-import browserStreamRoutes from "./browser-stream";
-import chatRoutes from "./chat/routes";
+
+// Mock config to ENABLE the feature for these tests
+vi.mock("@/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof originalConfigModule>();
+  return {
+    default: {
+      ...actual.default,
+      features: {
+        ...actual.default.features,
+        browserStreaming: true, // Feature is enabled for these tests
+      },
+    },
+  };
+});
+
+// Import routes AFTER mocking config (dynamic import needed because of the mock)
+const { default: browserStreamRoutes } = await import("./browser-stream");
+const { default: chatRoutes } = await import("./chat/routes");
 
 const buildAppWithUser = async (user: User, organizationId: string) => {
   const app = Fastify({ logger: false })

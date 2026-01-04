@@ -66,6 +66,9 @@ export function BrowserPanel({
   // Zoom state - toggle between 50% and 100%
   const [isZoomedOut, setIsZoomedOut] = useState(false);
 
+  // URL input editing state - when true, don't sync URL from screenshots
+  const [isEditingUrl, setIsEditingUrl] = useState(false);
+
   // Interaction state
   const [typeText, setTypeText] = useState("");
   const [isInteracting, setIsInteracting] = useState(false);
@@ -73,6 +76,13 @@ export function BrowserPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const subscribedConversationIdRef = useRef<string | null>(null);
+  const prevConversationIdRef = useRef<string | undefined>(undefined);
+  const isEditingUrlRef = useRef(false);
+
+  // Keep ref in sync with state for use in subscription callbacks
+  useEffect(() => {
+    isEditingUrlRef.current = isEditingUrl;
+  }, [isEditingUrl]);
 
   // Subscribe to browser stream via existing WebSocket
   useEffect(() => {
@@ -87,23 +97,34 @@ export function BrowserPanel({
       }
       setIsConnected(false);
       setScreenshot(null);
+      prevConversationIdRef.current = conversationId;
       return;
     }
 
     // Clear state when switching conversations
-    if (
-      subscribedConversationIdRef.current &&
-      subscribedConversationIdRef.current !== conversationId
-    ) {
-      websocketService.send({
-        type: "unsubscribe_browser_stream",
-        payload: { conversationId: subscribedConversationIdRef.current },
-      });
-      subscribedConversationIdRef.current = null;
+    // Use prevConversationIdRef because subscribedConversationIdRef is cleared in cleanup
+    const isConversationSwitch =
+      prevConversationIdRef.current !== undefined &&
+      prevConversationIdRef.current !== conversationId;
+
+    if (isConversationSwitch) {
+      // Unsubscribe from previous conversation if still subscribed
+      if (subscribedConversationIdRef.current) {
+        websocketService.send({
+          type: "unsubscribe_browser_stream",
+          payload: { conversationId: subscribedConversationIdRef.current },
+        });
+        subscribedConversationIdRef.current = null;
+      }
+      // Clear state for new conversation
       setScreenshot(null);
       setUrlInput("");
       setIsConnected(false);
+      setIsEditingUrl(false);
     }
+
+    // Update prevConversationIdRef for next comparison
+    prevConversationIdRef.current = conversationId;
 
     setIsConnecting(true);
     setError(null);
@@ -117,7 +138,8 @@ export function BrowserPanel({
       (message) => {
         if (message.payload.conversationId === conversationId) {
           setScreenshot(message.payload.screenshot);
-          if (message.payload.url) {
+          // Only sync URL from screenshots when user is not editing the address bar
+          if (message.payload.url && !isEditingUrlRef.current) {
             setUrlInput(message.payload.url);
           }
           setError(null);
@@ -263,6 +285,8 @@ export function BrowserPanel({
       setIsNavigating(true);
       setError(null);
       setUrlInput(url);
+      // Resume URL sync from screenshots after user navigates
+      setIsEditingUrl(false);
 
       websocketService.send({
         type: "browser_navigate",
@@ -692,6 +716,7 @@ export function BrowserPanel({
               placeholder="Enter URL..."
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
+              onFocus={() => setIsEditingUrl(true)}
               className="h-7 text-xs"
               disabled={isNavigating || !isConnected}
             />

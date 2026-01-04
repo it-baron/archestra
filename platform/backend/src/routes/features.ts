@@ -31,6 +31,8 @@ const featuresRoutes: FastifyPluginAsyncZod = async (fastify) => {
             geminiVertexAiEnabled: z.boolean(),
             /** Global tool policy - permissive bypasses policy checks, restrictive enforces them */
             globalToolPolicy: z.enum(["permissive", "restrictive"]),
+            /** Browser streaming - enables live browser automation via Playwright MCP */
+            browserStreamingEnabled: z.boolean(),
           }),
         },
       },
@@ -47,6 +49,7 @@ const featuresRoutes: FastifyPluginAsyncZod = async (fastify) => {
         byosEnabled: isByosEnabled(),
         byosVaultKvVersion: getByosVaultKvVersion(),
         geminiVertexAiEnabled: isVertexAiEnabled(),
+        browserStreamingEnabled: config.features.browserStreaming,
         globalToolPolicy,
       });
     },
