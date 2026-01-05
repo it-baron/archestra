@@ -468,7 +468,6 @@ export async function getChatMcpTools({
   conversationId,
   promptId,
   organizationId,
-  conversationId,
 }: {
   agentName: string;
   agentId: string;
@@ -478,7 +477,6 @@ export async function getChatMcpTools({
   conversationId?: string;
   promptId?: string;
   organizationId?: string;
-  conversationId?: string;
 }): Promise<Record<string, Tool>> {
   const toolCacheKey = getToolCacheKey(agentId, userId, promptId);
 
