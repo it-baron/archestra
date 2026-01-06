@@ -44,6 +44,7 @@ import {
   UuidIdSchema,
 } from "@/types";
 import { mapProviderError } from "./errors";
+import { stripImagesFromMessages } from "./strip-images-from-messages";
 
 /**
  * Get a smart default model and provider based on available API keys for the user.
@@ -325,13 +326,17 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
             }
 
             if (messagesToSave.length > 0) {
+              // Strip base64 images from messages before storing
+              // Images have already been processed by LLM - no need to keep them
+              const strippedMessages = stripImagesFromMessages(messagesToSave);
+
               // Append only new messages with timestamps
               const now = Date.now();
               // biome-ignore lint/suspicious/noExplicitAny: UIMessage structure from AI SDK is dynamic
-              const messageData = messagesToSave.map((msg: any, index) => ({
+              const messageData = strippedMessages.map((msg: any, index) => ({
                 conversationId,
                 role: msg.role,
-                content: msg, // Store entire UIMessage
+                content: msg, // Store entire UIMessage (with images stripped)
                 createdAt: new Date(now + index), // Preserve order
               }));
 
