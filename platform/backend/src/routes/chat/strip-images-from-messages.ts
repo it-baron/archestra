@@ -41,6 +41,19 @@ const BROWSER_TOOLS_TO_STRIP = [
 // Size threshold - results larger than this will be stripped
 const BROWSER_RESULT_SIZE_THRESHOLD = 2000;
 
+export type UiMessagePart = {
+  type: string;
+  output?: unknown;
+  result?: unknown;
+  toolName?: string;
+};
+
+export type UiMessage = {
+  id?: string;
+  role?: string;
+  parts?: UiMessagePart[];
+};
+
 /**
  * Check if a tool name is a browser tool that should have large results stripped
  */
@@ -193,10 +206,9 @@ function convertImageBlocksToText(content: unknown): unknown {
  * - image parts (converts to text parts)
  * - Any deeply nested base64 data in results
  */
-// biome-ignore lint/suspicious/noExplicitAny: UIMessage structure from AI SDK is dynamic
-function stripImagesFromParts(parts: any[]): any[] {
+function stripImagesFromParts(parts: UiMessagePart[]): UiMessagePart[] {
   return parts.map((part) => {
-    const partType = part.type as string;
+    const partType = part.type;
 
     // Handle Vercel AI SDK tool parts: type is "tool-{toolName}"
     if (partType?.startsWith("tool-") && part.output !== undefined) {
@@ -267,8 +279,7 @@ function stripImagesFromParts(parts: any[]): any[] {
  * @param messages - Array of UIMessage objects from AI SDK
  * @returns Messages with base64 image data replaced by placeholders
  */
-// biome-ignore lint/suspicious/noExplicitAny: UIMessage structure from AI SDK is dynamic
-export function stripImagesFromMessages(messages: any[]): any[] {
+export function stripImagesFromMessages(messages: UiMessage[]): UiMessage[] {
   logger.info(
     { messageCount: messages.length },
     "[stripImagesFromMessages] Processing messages",

@@ -42,7 +42,7 @@ import {
   OpenAi,
   UuidIdSchema,
 } from "@/types";
-import { safeJsonLength } from "@/utils/safe-json";
+import { estimateMessagesSize } from "@/utils/message-size";
 import { PROXY_API_PREFIX, PROXY_BODY_LIMIT } from "./common";
 import { MockOpenAIClient } from "./mock-openai-client";
 import * as utils from "./utils";
@@ -410,9 +410,9 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         { messageCount: filteredMessages.length },
         "[OpenAIProxy] About to strip browser tool results",
       );
-      const sizeBeforeStrip = safeJsonLength(filteredMessages);
+      const sizeBeforeStrip = estimateMessagesSize(filteredMessages);
       filteredMessages = stripBrowserToolsResults(filteredMessages);
-      const sizeAfterStrip = safeJsonLength(filteredMessages);
+      const sizeAfterStrip = estimateMessagesSize(filteredMessages);
 
       if (sizeBeforeStrip.length !== sizeAfterStrip.length) {
         logger.info(
@@ -422,7 +422,8 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
             savedKB: Math.round(
               (sizeBeforeStrip.length - sizeAfterStrip.length) / 1024,
             ),
-            sizeEstimateReliable: sizeBeforeStrip.ok && sizeAfterStrip.ok,
+            sizeEstimateReliable:
+              !sizeBeforeStrip.isEstimated && !sizeAfterStrip.isEstimated,
           },
           "[OpenAIProxy] Stripped browser tool results",
         );
@@ -450,7 +451,7 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
       );
 
       // Log request size for debugging token issues
-      const requestSize = safeJsonLength(filteredMessages);
+      const requestSize = estimateMessagesSize(filteredMessages);
       const requestSizeKB = Math.round(requestSize.length / 1024);
       const estimatedTokens = Math.round(requestSize.length / 4);
 
@@ -488,7 +489,7 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
           messageCount: filteredMessages.length,
           requestSizeKB,
           estimatedTokens,
-          sizeEstimateReliable: requestSize.ok,
+          sizeEstimateReliable: !requestSize.isEstimated,
           imageCount,
           totalImageBase64KB: Math.round(
             (totalImageBase64Length * 3) / 4 / 1024,

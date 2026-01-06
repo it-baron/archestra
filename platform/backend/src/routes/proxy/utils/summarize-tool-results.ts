@@ -10,7 +10,10 @@
  */
 
 import logger from "@/logging";
-import { safeJsonStringify } from "@/utils/safe-json";
+import {
+  estimateToolResultContentLength,
+  previewToolResultContent,
+} from "@/utils/tool-result-preview";
 
 // Tool names that produce large outputs that should be summarized
 const BROWSER_TOOLS = [
@@ -168,7 +171,7 @@ function getMostRecentBrowserToolTargets(
  * Extract page URL from browser tool result content
  */
 function extractPageUrl(content: string | unknown): string {
-  const { value: contentStr } = safeJsonStringify(content);
+  const contentStr = previewToolResultContent(content, 4000);
 
   // Try to find URL patterns in the content
   // Common patterns: "Page URL: https://..." or "url: https://..."
@@ -186,6 +189,25 @@ function extractPageUrl(content: string | unknown): string {
   }
 
   return "unknown";
+}
+
+type ContentSize = {
+  length: number;
+  isEstimated: boolean;
+  isLarge: boolean;
+};
+
+function getContentSize(content: string | unknown): ContentSize {
+  const estimate = estimateToolResultContentLength(content);
+  if (estimate.length > SIZE_THRESHOLD) {
+    return { ...estimate, isLarge: true };
+  }
+
+  const preview = previewToolResultContent(content, SIZE_THRESHOLD + 1);
+  return {
+    ...estimate,
+    isLarge: preview.length > SIZE_THRESHOLD,
+  };
 }
 
 /**
@@ -228,15 +250,14 @@ export function stripBrowserToolsResults<T extends Message>(
     // Get tool name - first try direct name field, then look up from tool_call_id
     const toolName = resolveToolName(messages, msg);
 
-    const contentInfo = safeJsonStringify(msg.content);
-    const contentStr = contentInfo.value;
+    const contentSize = getContentSize(msg.content);
 
     logger.debug(
       {
         toolName,
         toolCallId: msg.tool_call_id,
-        contentLength: contentStr.length,
-        stringifyOk: contentInfo.ok,
+        contentLength: contentSize.length,
+        contentLengthEstimated: contentSize.isEstimated,
         isBrowser: isBrowserTool(toolName),
       },
       "[stripBrowserToolsResults] Processing tool message",
@@ -251,10 +272,10 @@ export function stripBrowserToolsResults<T extends Message>(
     if (shouldPreserve) return msg;
 
     // Strip if larger than threshold
-    if (contentStr.length > SIZE_THRESHOLD) {
+    if (contentSize.isLarge) {
       strippedCount++;
       logger.info(
-        { toolName, contentLength: contentStr.length },
+        { toolName, contentLength: contentSize.length },
         "[stripBrowserToolsResults] Stripping large result",
       );
       return {

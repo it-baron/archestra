@@ -138,17 +138,12 @@ export class BrowserStreamService {
    * Find the Playwright browser screenshot tool for an agent
    */
   private async findScreenshotTool(agentId: string): Promise<string | null> {
-    // Prefer browser_take_screenshot, fallback to browser_snapshot
-    const screenshotTool = await this.findToolName(
+    // Prefer browser_take_screenshot or browser_screenshot
+    return this.findToolName(
       agentId,
       (toolName) =>
         toolName.includes("browser_take_screenshot") ||
         toolName.includes("browser_screenshot"),
-    );
-    if (screenshotTool) return screenshotTool;
-
-    return this.findToolName(agentId, (toolName) =>
-      toolName.includes("browser_snapshot"),
     );
   }
 
@@ -206,15 +201,24 @@ export class BrowserStreamService {
           "Cleaning up orphaned browser tabs after restart",
         );
 
-        for (let i = tabs.length - 1; i > 0; i--) {
+        const closableTabs = tabs
+          .filter((tab) => tab.index !== 0)
+          .sort((a, b) => b.index - a.index);
+
+        for (const tab of closableTabs) {
           try {
             await client.callTool({
               name: tabsTool,
-              arguments: { action: "close", index: i },
+              arguments: { action: "close", index: tab.index },
             });
           } catch (error) {
             logger.warn(
-              { agentId, userId: userContext.userId, tabIndex: i, error },
+              {
+                agentId,
+                userId: userContext.userId,
+                tabIndex: tab.index,
+                error,
+              },
               "Failed to close orphaned tab",
             );
           }
@@ -318,7 +322,7 @@ export class BrowserStreamService {
       }
 
       const existingTabs = this.parseTabsList(listResult.content);
-      const expectedNewTabIndex = existingTabs.length;
+      const expectedNewTabIndex = this.getMaxTabIndex(existingTabs) + 1;
 
       const createResult = await client.callTool({
         name: tabsTool,
@@ -337,7 +341,10 @@ export class BrowserStreamService {
 
       const resolvedTabIndex = postCreateList.isError
         ? expectedNewTabIndex
-        : Math.max(0, this.parseTabsList(postCreateList.content).length - 1);
+        : Math.max(
+            expectedNewTabIndex,
+            this.getMaxTabIndex(this.parseTabsList(postCreateList.content)),
+          );
 
       const selectNewResult = await client.callTool({
         name: tabsTool,
@@ -641,24 +648,41 @@ export class BrowserStreamService {
     // This is a simplified parser - actual format depends on Playwright MCP
     const tabs: Array<{ index: number; title?: string; url?: string }> = [];
 
+    const parseIndex = (value: unknown, fallback: number): number => {
+      if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isNaN(parsed) && parsed >= 0) {
+          return parsed;
+        }
+      }
+      return fallback;
+    };
+
     // Try to parse JSON if content is JSON
     try {
       const parsed: unknown = JSON.parse(textContent);
       if (Array.isArray(parsed)) {
-        return parsed.map((item, index) => {
+        return parsed.map((item, fallbackIndex) => {
           if (typeof item === "object" && item !== null) {
-            const rawTitle =
-              "title" in item ? (item as { title?: unknown }).title : undefined;
-            const rawUrl =
-              "url" in item ? (item as { url?: unknown }).url : undefined;
+            const candidate = item as Record<string, unknown>;
+            const rawTitle = candidate.title;
+            const rawUrl = candidate.url;
+            const rawIndex = candidate.index ?? candidate.id;
             const title = typeof rawTitle === "string" ? rawTitle : undefined;
             const url = typeof rawUrl === "string" ? rawUrl : undefined;
-            return { index, title, url };
+            return {
+              index: parseIndex(rawIndex, fallbackIndex),
+              title,
+              url,
+            };
           }
           if (typeof item === "string") {
-            return { index, title: item };
+            return { index: fallbackIndex, title: item };
           }
-          return { index };
+          return { index: fallbackIndex };
         });
       }
     } catch {
@@ -676,6 +700,18 @@ export class BrowserStreamService {
     }
 
     return tabs;
+  }
+
+  private getMaxTabIndex(
+    tabs: Array<{ index: number; title?: string; url?: string }>,
+  ): number {
+    let maxIndex = -1;
+    for (const tab of tabs) {
+      if (Number.isInteger(tab.index) && tab.index > maxIndex) {
+        maxIndex = tab.index;
+      }
+    }
+    return maxIndex;
   }
 
   /**
@@ -738,26 +774,27 @@ export class BrowserStreamService {
     // Playwright MCP returns screenshots as base64 images in content array
     const screenshot = this.extractScreenshot(result.content);
 
-    // Log screenshot size for debugging token usage issues
-    if (screenshot) {
-      // Extract base64 data (remove data URL prefix)
-      const base64Match = screenshot.match(/^data:([^;]+);base64,(.+)$/);
-      if (base64Match) {
-        const mimeType = base64Match[1];
-        const base64Data = base64Match[2];
-        const estimatedSizeKB = Math.round((base64Data.length * 3) / 4 / 1024);
+    if (!screenshot) {
+      return { error: "No screenshot returned from browser tool" };
+    }
 
-        logger.info(
-          {
-            agentId,
-            conversationId,
-            mimeType,
-            base64Length: base64Data.length,
-            estimatedSizeKB,
-          },
-          "[BrowserStream] Screenshot captured",
-        );
-      }
+    // Log screenshot size for debugging token usage issues
+    const base64Match = screenshot.match(/^data:([^;]+);base64,(.+)$/);
+    if (base64Match) {
+      const mimeType = base64Match[1];
+      const base64Data = base64Match[2];
+      const estimatedSizeKB = Math.round((base64Data.length * 3) / 4 / 1024);
+
+      logger.info(
+        {
+          agentId,
+          conversationId,
+          mimeType,
+          base64Length: base64Data.length,
+          estimatedSizeKB,
+        },
+        "[BrowserStream] Screenshot captured",
+      );
     }
 
     // Get URL reliably using browser_evaluate instead of extracting from screenshot response

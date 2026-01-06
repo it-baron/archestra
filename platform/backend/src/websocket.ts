@@ -21,6 +21,7 @@ interface BrowserStreamSubscription {
   agentId: string;
   userContext: BrowserUserContext;
   intervalId: NodeJS.Timeout;
+  isSending: boolean;
 }
 
 interface WebSocketClientContext {
@@ -286,12 +287,23 @@ class WebSocketService {
     }
 
     // Send initial screenshot
-    this.sendScreenshot(ws, agentId, conversationId, userContext);
+    const sendTick = async () => {
+      const subscription = this.browserSubscriptions.get(ws);
+      if (!subscription) return;
+      if (subscription.isSending) return;
+
+      subscription.isSending = true;
+      try {
+        await this.sendScreenshot(ws, agentId, conversationId, userContext);
+      } finally {
+        subscription.isSending = false;
+      }
+    };
 
     // Set up interval for continuous streaming
     const intervalId = setInterval(() => {
       if (ws.readyState === WS.OPEN) {
-        this.sendScreenshot(ws, agentId, conversationId, userContext);
+        void sendTick();
       } else {
         this.unsubscribeBrowserStream(ws);
       }
@@ -303,7 +315,10 @@ class WebSocketService {
       agentId,
       userContext,
       intervalId,
+      isSending: false,
     });
+
+    void sendTick();
   }
 
   /**
@@ -661,12 +676,12 @@ class WebSocketService {
             url: result.url,
           },
         });
-      } else if (result.error) {
+      } else {
         this.sendToClient(ws, {
           type: "browser_stream_error",
           payload: {
             conversationId,
-            error: result.error,
+            error: result.error ?? "No screenshot returned from browser tool",
           },
         });
       }
@@ -675,6 +690,14 @@ class WebSocketService {
         { error, conversationId },
         "Error taking screenshot for stream",
       );
+      this.sendToClient(ws, {
+        type: "browser_stream_error",
+        payload: {
+          conversationId,
+          error:
+            error instanceof Error ? error.message : "Screenshot capture failed",
+        },
+      });
     }
   }
 

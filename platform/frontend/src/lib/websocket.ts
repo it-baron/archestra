@@ -161,20 +161,29 @@ class WebSocketService {
   private reconnectDelay = 1000; // Start with 1 second
   private maxReconnectDelay = 30000; // Max 30 seconds
   private isManuallyDisconnected = false;
+  private isConnecting = false;
+  private pendingMessages: ClientWebSocketMessage[] = [];
 
   async connect(): Promise<void> {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (
+      this.ws?.readyState === WebSocket.OPEN ||
+      this.ws?.readyState === WebSocket.CONNECTING ||
+      this.isConnecting
+    ) {
       return;
     }
 
     this.isManuallyDisconnected = false;
+    this.isConnecting = true;
 
     try {
       this.ws = new WebSocket(config.websocket.url);
 
       this.ws.addEventListener("open", () => {
+        this.isConnecting = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
+        this.flushPendingMessages();
       });
 
       // this.ws.addEventListener("error", (_error) => {});
@@ -190,6 +199,7 @@ class WebSocketService {
 
       this.ws.addEventListener("close", () => {
         this.ws = null;
+        this.isConnecting = false;
 
         // Attempt to reconnect unless manually disconnected
         if (!this.isManuallyDisconnected) {
@@ -197,6 +207,7 @@ class WebSocketService {
         }
       });
     } catch (error) {
+      this.isConnecting = false;
       console.error("[WebSocket] Connection failed:", error);
       this.scheduleReconnect();
     }
@@ -225,6 +236,7 @@ class WebSocketService {
 
   disconnect(): void {
     this.isManuallyDisconnected = true;
+    this.pendingMessages = [];
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -280,12 +292,9 @@ class WebSocketService {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  /**
-   * Send a message to the server (only client messages allowed)
-   */
-  send(message: ClientWebSocketMessage): void {
+  private sendNow(message: ClientWebSocketMessage): void {
     if (!this.isConnected()) {
-      console.error("[WebSocket] Not connected, cannot send message");
+      this.pendingMessages.push(message);
       return;
     }
 
@@ -293,7 +302,37 @@ class WebSocketService {
       this.ws?.send(JSON.stringify(message));
     } catch (error) {
       console.error("[WebSocket] Failed to send message:", error);
+      this.pendingMessages.unshift(message);
     }
+  }
+
+  private flushPendingMessages(): void {
+    if (!this.isConnected() || this.pendingMessages.length === 0) {
+      return;
+    }
+
+    const queuedMessages = [...this.pendingMessages];
+    this.pendingMessages = [];
+    for (const message of queuedMessages) {
+      this.sendNow(message);
+    }
+  }
+
+  /**
+   * Send a message to the server (only client messages allowed)
+   */
+  send(message: ClientWebSocketMessage): void {
+    if (!this.isConnected()) {
+      this.pendingMessages.push(message);
+      if (!this.isManuallyDisconnected && !this.isConnecting && !this.ws) {
+        this.connect().catch((error) => {
+          console.error("[WebSocket] Auto-connect failed:", error);
+        });
+      }
+      return;
+    }
+
+    this.sendNow(message);
   }
 }
 

@@ -122,4 +122,114 @@ describe("BrowserStreamService URL handling", () => {
     // Screenshot should still be present (extractScreenshot adds data URL prefix)
     expect(result.screenshot).toContain("base64screenshotdata");
   });
+
+  test("takeScreenshot returns an error when no image data is present", async () => {
+    const browserService = new BrowserStreamService();
+    const agentId = "test-agent";
+    const conversationId = "test-conversation";
+    const userContext = { userId: "test-user", userIsProfileAdmin: false };
+
+    vi.spyOn(browserService, "selectOrCreateTab").mockResolvedValue({
+      success: true,
+      tabIndex: 0,
+    });
+
+    vi.spyOn(
+      browserService as unknown as {
+        findScreenshotTool: () => Promise<string>;
+      },
+      "findScreenshotTool",
+    ).mockResolvedValue("browser_take_screenshot");
+
+    const getCurrentUrlSpy = vi.spyOn(browserService, "getCurrentUrl");
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        isError: false,
+        content: [{ type: "text", text: "No image content" }],
+      }),
+    };
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue(
+      mockClient as never,
+    );
+
+    const result = await browserService.takeScreenshot(
+      agentId,
+      conversationId,
+      userContext,
+    );
+
+    expect(result.error).toBe("No screenshot returned from browser tool");
+    expect(result.screenshot).toBeUndefined();
+    expect(getCurrentUrlSpy).not.toHaveBeenCalled();
+  });
+
+  test("selectOrCreateTab uses MCP-provided tab indices", async () => {
+    const browserService = new BrowserStreamService();
+    const agentId = "test-agent";
+    const conversationId = "test-conversation";
+    const userContext = { userId: "test-user", userIsProfileAdmin: false };
+
+    vi.spyOn(
+      browserService as unknown as {
+        findTabsTool: () => Promise<string | null>;
+      },
+      "findTabsTool",
+    ).mockResolvedValue("browser_tabs");
+
+    vi.spyOn(
+      browserService as unknown as {
+        cleanupOrphanedTabs: () => Promise<void>;
+      },
+      "cleanupOrphanedTabs",
+    ).mockResolvedValue();
+
+    const callTool = vi
+      .fn()
+      .mockResolvedValueOnce({
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify([
+              { index: 1, title: "One" },
+              { index: 4, title: "Four" },
+            ]),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ isError: false, content: [] })
+      .mockResolvedValueOnce({
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify([
+              { index: 1, title: "One" },
+              { index: 4, title: "Four" },
+              { index: 7, title: "Seven" },
+            ]),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ isError: false, content: [] });
+
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue(
+      {
+        callTool,
+      } as never,
+    );
+
+    const result = await browserService.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+
+    expect(result).toEqual({ success: true, tabIndex: 7 });
+    expect(callTool).toHaveBeenCalledWith({
+      name: "browser_tabs",
+      arguments: { action: "select", index: 7 },
+    });
+  });
 });

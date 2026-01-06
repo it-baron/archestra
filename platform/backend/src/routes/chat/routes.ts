@@ -43,9 +43,12 @@ import {
   UpdateConversationSchema,
   UuidIdSchema,
 } from "@/types";
-import { safeJsonLength } from "@/utils/safe-json";
+import { estimateMessagesSize } from "@/utils/message-size";
 import { mapProviderError } from "./errors";
-import { stripImagesFromMessages } from "./strip-images-from-messages";
+import {
+  type UiMessage,
+  stripImagesFromMessages,
+} from "./strip-images-from-messages";
 
 /**
  * Get a smart default model and provider based on available API keys for the user.
@@ -123,7 +126,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         tags: ["Chat"],
         body: z.object({
           id: UuidIdSchema, // Chat ID from useChat
-          messages: z.array(z.any()), // UIMessage[]
+          messages: z.array(z.unknown()), // UIMessage[]
           trigger: z.enum(["submit-message", "regenerate-message"]).optional(),
         }),
         // Streaming responses don't have a schema
@@ -234,7 +237,9 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       // Strip images and large browser tool results from messages before sending to LLM
       // This prevents context limit issues from accumulated screenshots and page snapshots
-      const strippedMessagesForLLM = stripImagesFromMessages(messages);
+      const strippedMessagesForLLM = stripImagesFromMessages(
+        messages as UiMessage[],
+      );
 
       // Stream with AI SDK
       // Build streamText config conditionally
@@ -320,21 +325,23 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
           // Only save new messages (avoid re-saving existing ones)
           const newMessages = finalMessages.slice(existingCount);
 
-          if (newMessages.length > 0) {
-            // Check if last message has empty parts and strip it if so
-            let messagesToSave = newMessages;
-            if (
-              newMessages.length > 0 &&
-              newMessages[newMessages.length - 1].parts.length === 0
-            ) {
-              messagesToSave = newMessages.slice(0, -1);
-            }
+            if (newMessages.length > 0) {
+              // Check if last message has empty parts and strip it if so
+              let messagesToSave = newMessages;
+              if (
+                newMessages.length > 0 &&
+                newMessages[newMessages.length - 1].parts.length === 0
+              ) {
+                messagesToSave = newMessages.slice(0, -1);
+              }
 
               if (messagesToSave.length > 0) {
                 // Strip base64 images and large browser tool results before storing
-                const beforeSize = safeJsonLength(messagesToSave);
-                const strippedMessages = stripImagesFromMessages(messagesToSave);
-                const afterSize = safeJsonLength(strippedMessages);
+                const beforeSize = estimateMessagesSize(messagesToSave);
+                const strippedMessages = stripImagesFromMessages(
+                  messagesToSave as UiMessage[],
+                );
+                const afterSize = estimateMessagesSize(strippedMessages);
 
                 logger.info(
                   {
@@ -344,28 +351,28 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
                     savedKB: Math.round(
                       (beforeSize.length - afterSize.length) / 1024,
                     ),
-                    sizeEstimateReliable: beforeSize.ok && afterSize.ok,
+                    sizeEstimateReliable:
+                      !beforeSize.isEstimated && !afterSize.isEstimated,
                   },
                   "[Chat] Stripped messages before saving to DB",
                 );
 
-              // Append only new messages with timestamps
-              const now = Date.now();
-              // biome-ignore lint/suspicious/noExplicitAny: UIMessage structure from AI SDK is dynamic
-              const messageData = strippedMessages.map((msg: any, index) => ({
-                conversationId,
-                role: msg.role,
-                content: msg, // Store entire UIMessage (with images stripped)
-                createdAt: new Date(now + index), // Preserve order
-              }));
+                // Append only new messages with timestamps
+                const now = Date.now();
+                const messageData = strippedMessages.map((msg, index) => ({
+                  conversationId,
+                  role: msg.role,
+                  content: msg, // Store entire UIMessage (with images stripped)
+                  createdAt: new Date(now + index), // Preserve order
+                }));
 
-              await MessageModel.bulkCreate(messageData);
+                await MessageModel.bulkCreate(messageData);
 
-              logger.info(
-                `Appended ${messagesToSave.length} new messages to conversation ${conversationId} (total: ${existingCount + messagesToSave.length})`,
-              );
+                logger.info(
+                  `Appended ${messagesToSave.length} new messages to conversation ${conversationId} (total: ${existingCount + messagesToSave.length})`,
+                );
+              }
             }
-          }
         },
       });
 

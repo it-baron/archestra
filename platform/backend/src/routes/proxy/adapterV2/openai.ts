@@ -26,7 +26,7 @@ import type {
   ToonCompressionResult,
   UsageView,
 } from "@/types";
-import { safeJsonLength } from "@/utils/safe-json";
+import { estimateMessagesSize } from "@/utils/message-size";
 import {
   estimateToolResultContentLength,
   previewToolResultContent,
@@ -320,7 +320,7 @@ class OpenAIRequestAdapter
     messages = this.convertToolResultContent(messages);
 
     // Calculate approximate request size for debugging
-    const requestSize = safeJsonLength(messages);
+    const requestSize = estimateMessagesSize(messages);
     const requestSizeKB = Math.round(requestSize.length / 1024);
     const estimatedTokens = Math.round(requestSize.length / 4);
 
@@ -330,7 +330,7 @@ class OpenAIRequestAdapter
         messageCount: messages.length,
         requestSizeKB,
         estimatedTokens,
-        sizeEstimateReliable: requestSize.ok,
+        sizeEstimateReliable: !requestSize.isEstimated,
         hasToolResultUpdates: Object.keys(this.toolResultUpdates).length > 0,
       },
       "[OpenAIAdapter] Building provider request",
