@@ -407,6 +407,71 @@ describe("GeminiRequestAdapter", () => {
         sanitizedContent: '{"temperature": 75, "updated": true}',
       });
     });
+
+    test("converts MCP image blocks in tool results", () => {
+      const mcpImageResponse = [
+        { type: "text", text: "Screenshot captured" },
+        {
+          type: "image",
+          data: "abc123",
+          mimeType: "image/png",
+        },
+      ] as unknown as Record<string, unknown>;
+
+      const request = createMockRequest([
+        { role: "user", parts: [{ text: "Capture a screenshot" }] },
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "browser_take_screenshot",
+                id: "call_123",
+                args: {},
+              },
+            },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "browser_take_screenshot",
+                id: "call_123",
+                response: mcpImageResponse,
+              },
+            },
+          ],
+        },
+      ]);
+
+      const adapter = geminiAdapterFactory.createRequestAdapter(request);
+      const result = adapter.toProviderRequest();
+
+      const userContent = result.contents?.find(
+        (content) =>
+          content.role === "user" &&
+          content.parts?.some((part) => "functionResponse" in part),
+      );
+      const functionResponsePart = userContent?.parts?.find(
+        (part) => "functionResponse" in part,
+      );
+      expect(
+        (functionResponsePart as { functionResponse: { response: unknown } })
+          ?.functionResponse?.response,
+      ).toEqual({
+        text: "Screenshot captured",
+        images: [
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: "abc123",
+            },
+          },
+        ],
+      });
+    });
   });
 });
 

@@ -1,6 +1,10 @@
 import { encode as toonEncode } from "@toon-format/toon";
 import { get } from "lodash-es";
 import OpenAIProvider from "openai";
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
+} from "openai/resources/chat/completions/completions";
 import config from "@/config";
 import { getObservableFetch } from "@/llm-metrics";
 import logger from "@/logging";
@@ -25,6 +29,7 @@ import type {
 import { MockOpenAIClient } from "../mock-openai-client";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
+import { hasImageContent, isMcpImageBlock } from "./mcp-image";
 
 // =============================================================================
 // TYPE ALIASES
@@ -35,6 +40,25 @@ type OpenAiResponse = OpenAi.Types.ChatCompletionsResponse;
 type OpenAiMessages = OpenAi.Types.ChatCompletionsRequest["messages"];
 type OpenAiHeaders = OpenAi.Types.ChatCompletionsHeaders;
 type OpenAiStreamChunk = OpenAi.Types.ChatCompletionChunk;
+
+type OpenAiToolResultImageBlock = {
+  type: "image_url";
+  image_url: {
+    url: string;
+    detail?: "auto" | "low" | "high";
+  };
+};
+
+type OpenAiToolResultTextBlock = {
+  type: "text";
+  text: string;
+};
+
+type OpenAiToolResultContentBlock =
+  | OpenAiToolResultImageBlock
+  | OpenAiToolResultTextBlock;
+
+type OpenAiToolResultContent = string | OpenAiToolResultContentBlock[];
 
 // =============================================================================
 // REQUEST ADAPTER
@@ -159,6 +183,24 @@ class OpenAIRequestAdapter
     };
   }
 
+  convertToolResultContent(messages: OpenAiMessages): OpenAiMessages {
+    return messages.map((message) => {
+      if (message.role !== "tool") {
+        return message;
+      }
+
+      const convertedContent = convertMcpImageBlocksToOpenAi(message.content);
+      if (!convertedContent) {
+        return message;
+      }
+
+      return {
+        ...message,
+        content: convertedContent,
+      };
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Build Modified Request
   // ---------------------------------------------------------------------------
@@ -169,6 +211,8 @@ class OpenAIRequestAdapter
     if (Object.keys(this.toolResultUpdates).length > 0) {
       messages = this.applyUpdates(messages, this.toolResultUpdates);
     }
+
+    messages = this.convertToolResultContent(messages);
 
     return {
       ...this.request,
@@ -297,6 +341,45 @@ class OpenAIRequestAdapter
     );
     return result;
   }
+}
+
+function convertMcpImageBlocksToOpenAi(
+  content: unknown,
+): OpenAiToolResultContent | null {
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  if (!hasImageContent(content)) {
+    return null;
+  }
+
+  const openAiContent: OpenAiToolResultContentBlock[] = [];
+
+  for (const item of content) {
+    if (typeof item !== "object" || item === null) continue;
+    const candidate = item as Record<string, unknown>;
+
+    if (isMcpImageBlock(item)) {
+      const mimeType = item.mimeType ?? "image/png";
+      openAiContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${mimeType};base64,${item.data}`,
+        },
+      });
+    } else if (candidate.type === "text" && "text" in candidate) {
+      openAiContent.push({
+        type: "text",
+        text:
+          typeof candidate.text === "string"
+            ? candidate.text
+            : JSON.stringify(candidate),
+      });
+    }
+  }
+
+  return openAiContent.length > 0 ? openAiContent : null;
 }
 
 // =============================================================================
@@ -814,10 +897,13 @@ export const openaiAdapterFactory: LLMProvider<
     request: OpenAiRequest,
   ): Promise<OpenAiResponse> {
     const openaiClient = client as OpenAIProvider;
-    return openaiClient.chat.completions.create({
+    const openaiRequest = {
       ...request,
       stream: false,
-    }) as Promise<OpenAiResponse>;
+    } as unknown as ChatCompletionCreateParamsNonStreaming;
+    return openaiClient.chat.completions.create(
+      openaiRequest,
+    ) as Promise<OpenAiResponse>;
   },
 
   async executeStream(
@@ -825,11 +911,12 @@ export const openaiAdapterFactory: LLMProvider<
     request: OpenAiRequest,
   ): Promise<AsyncIterable<OpenAiStreamChunk>> {
     const openaiClient = client as OpenAIProvider;
-    const stream = await openaiClient.chat.completions.create({
+    const openaiRequest = {
       ...request,
       stream: true,
       stream_options: { include_usage: true },
-    });
+    } as unknown as ChatCompletionCreateParamsStreaming;
+    const stream = await openaiClient.chat.completions.create(openaiRequest);
 
     return {
       [Symbol.asyncIterator]: async function* () {

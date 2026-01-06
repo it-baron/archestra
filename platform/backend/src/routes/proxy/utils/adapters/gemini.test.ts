@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { toolResultsToMessages } from "./gemini";
 import type { CommonToolCall } from "@/types";
+import { toolResultsToMessages } from "./gemini";
 
 describe("adapters/gemini", () => {
   describe("toolResultsToMessages", () => {
@@ -48,7 +48,9 @@ describe("adapters/gemini", () => {
       const messages = toolResultsToMessages(results, toolCalls);
 
       expect(messages[0].name).toBe("test_tool");
-      expect(messages[0].response).toEqual({ error: "Tool execution failed" });
+      expect(messages[0].response).toEqual({
+        error: "Tool execution failed",
+      });
     });
 
     test("handles string content", () => {
@@ -67,7 +69,9 @@ describe("adapters/gemini", () => {
       const messages = toolResultsToMessages(results, toolCalls);
 
       expect(messages[0].name).toBe("test_tool");
-      expect(messages[0].response).toEqual({ result: "simple string response" });
+      expect(messages[0].response).toEqual({
+        result: "simple string response",
+      });
     });
 
     test("converts MCP image blocks to Gemini inlineData format", () => {

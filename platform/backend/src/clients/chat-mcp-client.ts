@@ -465,7 +465,12 @@ export async function getChatMcpTools({
   promptId?: string;
   organizationId?: string;
 }): Promise<Record<string, Tool>> {
-  const toolCacheKey = getToolCacheKey(agentId, userId, promptId, conversationId);
+  const toolCacheKey = getToolCacheKey(
+    agentId,
+    userId,
+    promptId,
+    conversationId,
+  );
 
   // Check cache first using cacheManager
   const cachedTools =

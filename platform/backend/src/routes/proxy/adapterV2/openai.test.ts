@@ -441,6 +441,55 @@ describe("OpenAIRequestAdapter", () => {
         '{"temperature": 75, "note": "updated"}',
       );
     });
+
+    test("converts MCP image blocks in tool results", () => {
+      const messages = [
+        { role: "user", content: "Capture a screenshot" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_123",
+              type: "function",
+              function: {
+                name: "browser_take_screenshot",
+                arguments: "{}",
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_123",
+          content: [
+            { type: "text", text: "Screenshot captured" },
+            {
+              type: "image",
+              data: "abc123",
+              mimeType: "image/png",
+            },
+          ],
+        },
+      ] as unknown as OpenAi.Types.ChatCompletionsRequest["messages"];
+
+      const request = createMockRequest(messages);
+      const adapter = openaiAdapterFactory.createRequestAdapter(request);
+      const result = adapter.toProviderRequest();
+
+      const toolMessage = result.messages.find(
+        (message) => message.role === "tool",
+      );
+      expect(toolMessage?.content).toEqual([
+        { type: "text", text: "Screenshot captured" },
+        {
+          type: "image_url",
+          image_url: {
+            url: "data:image/png;base64,abc123",
+          },
+        },
+      ]);
+    });
   });
 });
 

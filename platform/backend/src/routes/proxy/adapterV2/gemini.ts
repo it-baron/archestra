@@ -31,6 +31,7 @@ import * as geminiUtils from "../utils/adapters/gemini";
 import { createGoogleGenAIClient } from "../utils/gemini-client";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
+import { hasImageContent, isMcpImageBlock } from "./mcp-image";
 
 // =============================================================================
 // TYPE ALIASES
@@ -41,6 +42,10 @@ type GeminiResponse = Gemini.Types.GenerateContentResponse;
 type GeminiContents = Gemini.Types.GenerateContentRequest["contents"];
 type GeminiHeaders = Gemini.Types.GenerateContentHeaders;
 type GeminiStreamChunk = GenerateContentResponse;
+type GeminiFunctionResponse = Record<string, unknown> & {
+  name: string;
+  response: Record<string, unknown>;
+};
 
 // Extended request type that includes model (set from URL path parameter)
 export interface GeminiRequestWithModel extends GeminiRequest {
@@ -186,6 +191,41 @@ class GeminiRequestAdapter
     };
   }
 
+  convertToolResultContent(contents: GeminiContents): GeminiContents {
+    return contents.map((content) => {
+      if (content.role !== "user" || !content.parts) {
+        return content;
+      }
+
+      const updatedParts = content.parts.map((part) => {
+        if (isGeminiFunctionResponsePart(part)) {
+          const convertedResponse = convertMcpImageBlocksToGeminiResponse(
+            part.functionResponse.response,
+          );
+
+          if (!convertedResponse) {
+            return part;
+          }
+
+          return {
+            ...part,
+            functionResponse: {
+              ...part.functionResponse,
+              response: convertedResponse,
+            },
+          };
+        }
+
+        return part;
+      });
+
+      return {
+        ...content,
+        parts: updatedParts,
+      };
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Build Modified Request
   // ---------------------------------------------------------------------------
@@ -197,12 +237,79 @@ class GeminiRequestAdapter
       contents = geminiUtils.applyUpdates(contents, this.toolResultUpdates);
     }
 
+    contents = this.convertToolResultContent(contents);
+
     return {
       ...this.request,
       contents,
       _model: this.getModel(),
     };
   }
+}
+
+function isGeminiFunctionResponsePart(
+  part: Gemini.Types.MessagePart,
+): part is Gemini.Types.MessagePart & {
+  functionResponse: GeminiFunctionResponse;
+} {
+  if (!("functionResponse" in part) || !part.functionResponse) {
+    return false;
+  }
+
+  if (typeof part.functionResponse !== "object") {
+    return false;
+  }
+
+  const candidate = part.functionResponse as Record<string, unknown>;
+  return typeof candidate.name === "string" && "response" in candidate;
+}
+
+function convertMcpImageBlocksToGeminiResponse(
+  content: unknown,
+): Record<string, unknown> | null {
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  if (!hasImageContent(content)) {
+    return null;
+  }
+
+  const textParts: string[] = [];
+  const imageParts: Array<{ mimeType: string; data: string }> = [];
+
+  for (const item of content) {
+    if (typeof item !== "object" || item === null) continue;
+    const candidate = item as Record<string, unknown>;
+
+    if (isMcpImageBlock(item)) {
+      const mimeType = item.mimeType ?? "image/png";
+      imageParts.push({
+        mimeType,
+        data: item.data,
+      });
+    } else if (candidate.type === "text" && "text" in candidate) {
+      textParts.push(
+        typeof candidate.text === "string"
+          ? candidate.text
+          : JSON.stringify(candidate),
+      );
+    }
+  }
+
+  if (imageParts.length === 0) {
+    return null;
+  }
+
+  return {
+    text: textParts.join("\n"),
+    images: imageParts.map((img) => ({
+      inlineData: {
+        mimeType: img.mimeType,
+        data: img.data,
+      },
+    })),
+  };
 }
 
 // =============================================================================

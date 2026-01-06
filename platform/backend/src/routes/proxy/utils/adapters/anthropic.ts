@@ -22,6 +22,10 @@ import type {
   CommonToolResult,
   ToolResultUpdates,
 } from "@/types";
+import {
+  hasImageContent as hasMcpImageContent,
+  isMcpImageBlock,
+} from "./mcp-image";
 
 type AnthropicMessages = Anthropic.Types.MessagesRequest["messages"];
 
@@ -229,24 +233,6 @@ export function toolCallsToCommon(
   }));
 }
 
-/**
- * Check if content array contains image blocks from MCP
- */
-function hasImageContent(content: unknown): boolean {
-  if (!Array.isArray(content)) return false;
-  return content.some(
-    (item) => isMcpImageBlock(item) || isAnthropicImageBlock(item),
-  );
-}
-
-function isMcpImageBlock(
-  item: unknown,
-): item is { type: "image"; data: string; mimeType?: string } {
-  if (typeof item !== "object" || item === null) return false;
-  if (!("type" in item) || item.type !== "image") return false;
-  return "data" in item && typeof item.data === "string";
-}
-
 function isAnthropicImageBlock(
   item: unknown,
 ): item is AnthropicToolResultImageBlock {
@@ -265,6 +251,16 @@ function isAnthropicImageBlock(
     source.type === "base64" &&
     typeof source.media_type === "string" &&
     typeof source.data === "string"
+  );
+}
+
+/**
+ * Check if content array contains image blocks from MCP or Anthropic.
+ */
+function hasImageContent(content: unknown): boolean {
+  return hasMcpImageContent(
+    content,
+    (item) => isMcpImageBlock(item) || isAnthropicImageBlock(item),
   );
 }
 

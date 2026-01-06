@@ -13,6 +13,10 @@ import { RouteId } from "@shared";
 import type { FastifyReply } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import OpenAIProvider from "openai";
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
+} from "openai/resources/chat/completions/completions";
 import { z } from "zod";
 import config from "@/config";
 import getDefaultPricing from "@/default-model-prices";
@@ -437,14 +441,16 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
           true,
           resolvedAgent,
           async (llmSpan) => {
-            const response = await openAiClient.chat.completions.create({
+            const openaiRequest = {
               ...body,
               model,
               messages: filteredMessages,
               tools: mergedTools.length > 0 ? mergedTools : undefined,
               stream: true,
               stream_options: { include_usage: true },
-            });
+            } as unknown as ChatCompletionCreateParamsStreaming;
+            const response =
+              await openAiClient.chat.completions.create(openaiRequest);
             llmSpan.end();
             return response;
           },
@@ -852,13 +858,15 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
           false,
           resolvedAgent,
           async (llmSpan) => {
-            const response = await openAiClient.chat.completions.create({
+            const openaiRequest = {
               ...body,
               model,
               messages: filteredMessages,
               tools: mergedTools.length > 0 ? mergedTools : undefined,
               stream: false,
-            });
+            } as unknown as ChatCompletionCreateParamsNonStreaming;
+            const response =
+              await openAiClient.chat.completions.create(openaiRequest);
             llmSpan.end();
             return response;
           },

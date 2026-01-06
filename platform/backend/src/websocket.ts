@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import type { WebSocket, WebSocketServer } from "ws";
 import { WebSocket as WS, WebSocketServer as WSS } from "ws";
-import { randomUUID } from "node:crypto";
 import { betterAuth, hasPermission } from "@/auth";
 import config from "@/config";
 import logger from "@/logging";

@@ -1,5 +1,6 @@
 "use client";
 
+import type { UIMessage } from "@ai-sdk/react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -31,6 +32,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { useChatSession } from "@/contexts/global-chat-context";
 import { cn } from "@/lib/utils";
 import websocketService from "@/lib/websocket";
 
@@ -78,6 +80,34 @@ export function BrowserPanel({
   const subscribedConversationIdRef = useRef<string | null>(null);
   const prevConversationIdRef = useRef<string | undefined>(undefined);
   const isEditingUrlRef = useRef(false);
+  const chatSession = useChatSession(conversationId);
+  const chatMessages = chatSession?.messages ?? [];
+  const setChatMessages = chatSession?.setMessages;
+  const chatMessagesRef = useRef<UIMessage[]>([]);
+  const setChatMessagesRef = useRef<((messages: UIMessage[]) => void) | null>(
+    null,
+  );
+
+  chatMessagesRef.current = chatMessages;
+  setChatMessagesRef.current = setChatMessages ?? null;
+
+  const appendNavigationMessage = useCallback((text: string) => {
+    const updateMessages = setChatMessagesRef.current;
+    if (!updateMessages) return;
+
+    const messageId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `nav-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    const navigationMessage: UIMessage = {
+      id: messageId,
+      role: "user",
+      parts: [{ type: "text", text }],
+    };
+
+    updateMessages([...chatMessagesRef.current, navigationMessage]);
+  }, []);
 
   // Keep ref in sync with state for use in subscription callbacks
   useEffect(() => {
@@ -155,7 +185,11 @@ export function BrowserPanel({
       (message) => {
         if (message.payload.conversationId === conversationId) {
           setIsNavigating(false);
-          if (!message.payload.success && message.payload.error) {
+          if (message.payload.success && message.payload.url) {
+            appendNavigationMessage(
+              `[User manually navigated browser to: ${message.payload.url}]`,
+            );
+          } else if (message.payload.error) {
             setError(message.payload.error);
           }
         }
@@ -231,7 +265,11 @@ export function BrowserPanel({
       (message) => {
         if (message.payload.conversationId === conversationId) {
           setIsNavigating(false);
-          if (!message.payload.success && message.payload.error) {
+          if (message.payload.success) {
+            appendNavigationMessage(
+              "[User navigated browser back to previous page]",
+            );
+          } else if (message.payload.error) {
             setError(message.payload.error);
           }
         }
@@ -267,7 +305,7 @@ export function BrowserPanel({
         subscribedConversationIdRef.current = null;
       }
     };
-  }, [isOpen, conversationId]);
+  }, [isOpen, conversationId, appendNavigationMessage]);
 
   // Navigate to URL via WebSocket
   const handleNavigate = useCallback(

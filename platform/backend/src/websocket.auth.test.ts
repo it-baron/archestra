@@ -1,10 +1,28 @@
 import type { IncomingMessage } from "node:http";
+import { vi } from "vitest";
 import { WebSocket as WS } from "ws";
 import { betterAuth } from "@/auth";
-import type { BrowserStreamService } from "@/services/browser-stream";
-import { beforeEach, describe, expect, test, vi } from "@/test";
+import type * as originalConfigModule from "@/config";
+import { beforeEach, describe, expect, test } from "@/test";
 import type { WebSocketMessage } from "@/types";
-import websocketService from "@/websocket";
+
+vi.mock("@/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof originalConfigModule>();
+  return {
+    default: {
+      ...actual.default,
+      features: {
+        ...actual.default.features,
+        browserStreaming: true,
+      },
+    },
+  };
+});
+
+const { browserStreamFeature } = await import(
+  "@/services/browser-stream-feature"
+);
+const { default: websocketService } = await import("@/websocket");
 
 const service = websocketService as unknown as {
   authenticateConnection: (
@@ -13,7 +31,6 @@ const service = websocketService as unknown as {
   handleMessage: (message: WebSocketMessage, ws: WS) => Promise<void>;
   clientContexts: Map<WS, { userId: string; organizationId: string }>;
   browserSubscriptions: Map<WS, unknown>;
-  browserService: BrowserStreamService;
 };
 
 describe("websocket browser-stream authorization", () => {
@@ -68,10 +85,10 @@ describe("websocket browser-stream authorization", () => {
     });
 
     const selectSpy = vi
-      .spyOn(service.browserService, "selectOrCreateTab")
+      .spyOn(browserStreamFeature, "selectOrCreateTab")
       .mockResolvedValue({ success: true, tabIndex: 0 });
     const screenshotSpy = vi
-      .spyOn(service.browserService, "takeScreenshot")
+      .spyOn(browserStreamFeature, "takeScreenshot")
       .mockResolvedValue({ screenshot: "img", url: "http://example.com" });
 
     await service.handleMessage(

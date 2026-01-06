@@ -4,6 +4,28 @@ import { TeamTokenModel } from "@/models";
 import { describe, expect, test } from "@/test";
 import * as chatClient from "./chat-mcp-client";
 
+const mockConnect = vi.fn().mockRejectedValue(new Error("Connection closed"));
+const mockClose = vi.fn();
+
+const createMockClient = () => ({
+  connect: mockConnect,
+  listTools: vi.fn(),
+  callTool: vi.fn(),
+  close: mockClose,
+  ping: vi.fn(),
+});
+
+vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
+  // biome-ignore lint/complexity/useArrowFunction: mock constructor to satisfy Vitest class warning
+  Client: vi.fn(function () {
+    return createMockClient();
+  }),
+}));
+
+vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
+  StreamableHTTPClientTransport: vi.fn(),
+}));
+
 describe("isBrowserTool", () => {
   test("returns true for tools containing 'playwright'", () => {
     expect(chatClient.__test.isBrowserTool("mcp-playwright__navigate")).toBe(

@@ -26,6 +26,7 @@ import type {
 } from "@/types";
 import type { CompressionStats } from "../toon-conversion";
 import { unwrapToolContent } from "../unwrap-tool-content";
+import { hasImageContent, isMcpImageBlock } from "./mcp-image";
 
 type OpenAiMessages = OpenAi.Types.ChatCompletionsRequest["messages"];
 
@@ -34,6 +35,7 @@ type OpenAiToolResultImageBlock = {
   type: "image_url";
   image_url: {
     url: string;
+    detail?: "auto" | "low" | "high";
   };
 };
 
@@ -47,25 +49,6 @@ type OpenAiToolResultContentBlock =
   | OpenAiToolResultTextBlock;
 
 type OpenAiToolResultContent = string | OpenAiToolResultContentBlock[];
-
-/**
- * Check if content contains MCP image blocks
- */
-function hasImageContent(content: unknown): boolean {
-  if (!Array.isArray(content)) return false;
-  return content.some((item) => isMcpImageBlock(item));
-}
-
-/**
- * Check if item is an MCP image block
- */
-function isMcpImageBlock(
-  item: unknown,
-): item is { type: "image"; data: string; mimeType?: string } {
-  if (typeof item !== "object" || item === null) return false;
-  if (!("type" in item) || item.type !== "image") return false;
-  return "data" in item && typeof item.data === "string";
-}
 
 /**
  * Convert MCP image blocks to OpenAI format

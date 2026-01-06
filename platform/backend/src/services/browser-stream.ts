@@ -269,6 +269,18 @@ export class BrowserStreamService {
       conversationId,
     );
 
+    logger.info(
+      {
+        tabKey,
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+        existingTabIndex: conversationTabMap.get(tabKey),
+        allTabKeys: Array.from(conversationTabMap.keys()),
+      },
+      "selectOrCreateTab called",
+    );
+
     try {
       const existingTabIndex = conversationTabMap.get(tabKey);
 
@@ -822,7 +834,7 @@ export class BrowserStreamService {
       // Parse the current tab's URL from format like:
       // "- 1: (current) [Title] (https://example.com)"
       const currentTabMatch = textContent.match(
-        /\(current\)[^\(]*\(((?:https?|about):\/\/[^)]+)\)/,
+        /\(current\)[^()]*\(((?:https?|about):\/\/[^)]+)\)/,
       );
       return currentTabMatch?.[1];
     } catch {
@@ -837,16 +849,6 @@ export class BrowserStreamService {
   private async findRunCodeTool(agentId: string): Promise<string | null> {
     return this.findToolName(agentId, (toolName) =>
       toolName.includes("browser_run_code"),
-    );
-  }
-
-  /**
-   * Find the Playwright browser evaluate tool for an agent
-   * This tool allows running JavaScript in the browser context
-   */
-  private async findEvaluateTool(agentId: string): Promise<string | null> {
-    return this.findToolName(agentId, (toolName) =>
-      toolName.includes("browser_evaluate"),
     );
   }
 

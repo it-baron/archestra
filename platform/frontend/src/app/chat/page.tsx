@@ -1079,15 +1079,13 @@ export default function ChatPage() {
         onSuccess={() => router.push("/mcp-catalog/registry")}
       />
 
-      {isBrowserPanelOpen &&
-        isBrowserStreamingEnabled &&
-        hasPlaywrightMcp && (
-          <BrowserPanel
-            isOpen={isBrowserPanelOpen}
-            onClose={() => setIsBrowserPanelOpen(false)}
-            conversationId={conversationId}
-          />
-        )}
+      {isBrowserPanelOpen && isBrowserStreamingEnabled && hasPlaywrightMcp && (
+        <BrowserPanel
+          isOpen={isBrowserPanelOpen}
+          onClose={() => setIsBrowserPanelOpen(false)}
+          conversationId={conversationId}
+        />
+      )}
 
       {/* Right-side artifact panel */}
       <ConversationArtifactPanel
