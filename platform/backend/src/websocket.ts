@@ -1,10 +1,11 @@
 import type { IncomingMessage, Server } from "node:http";
 import type { WebSocket, WebSocketServer } from "ws";
 import { WebSocket as WS, WebSocketServer as WSS } from "ws";
+import { randomUUID } from "node:crypto";
 import { betterAuth, hasPermission } from "@/auth";
 import config from "@/config";
 import logger from "@/logging";
-import { ConversationModel, UserModel } from "@/models";
+import { ConversationModel, MessageModel, UserModel } from "@/models";
 import type { BrowserUserContext } from "@/services/browser-stream";
 import { browserStreamFeature } from "@/services/browser-stream-feature";
 import {
@@ -348,6 +349,12 @@ class WebSocketService {
         url,
         subscription.userContext,
       );
+
+      // Add navigation context to conversation so AI knows the page changed
+      if (result.success) {
+        await this.addNavigationMessageToConversation(conversationId, url);
+      }
+
       this.sendToClient(ws, {
         type: "browser_navigate_result",
         payload: {
@@ -396,6 +403,12 @@ class WebSocketService {
         conversationId,
         subscription.userContext,
       );
+
+      // Add navigation context to conversation so AI knows the page changed
+      if (result.success) {
+        await this.addNavigationBackMessageToConversation(conversationId);
+      }
+
       this.sendToClient(ws, {
         type: "browser_navigate_back_result",
         payload: {
@@ -829,6 +842,84 @@ class WebSocketService {
       payload: { message: "Unauthorized" },
     });
     ws.close(4401, "Unauthorized");
+  }
+
+  /**
+   * Add a navigation message to the conversation so AI knows the browser navigated
+   * This is called when user manually navigates via browser panel address bar
+   */
+  private async addNavigationMessageToConversation(
+    conversationId: string,
+    url: string,
+  ): Promise<void> {
+    try {
+      // Create a user message that tells the AI about the navigation
+      // This uses the UIMessage format expected by AI SDK
+      const navigationMessage = {
+        id: randomUUID(),
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: `[User manually navigated browser to: ${url}]`,
+          },
+        ],
+      };
+
+      await MessageModel.create({
+        conversationId,
+        role: "user",
+        content: navigationMessage,
+      });
+
+      logger.info(
+        { conversationId, url },
+        "Added navigation context message to conversation",
+      );
+    } catch (error) {
+      // Don't fail the navigation if message save fails
+      logger.error(
+        { error, conversationId, url },
+        "Failed to add navigation message to conversation",
+      );
+    }
+  }
+
+  /**
+   * Add a navigation back message to the conversation
+   * This is called when user clicks the back button in browser panel
+   */
+  private async addNavigationBackMessageToConversation(
+    conversationId: string,
+  ): Promise<void> {
+    try {
+      const navigationMessage = {
+        id: randomUUID(),
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "[User navigated browser back to previous page]",
+          },
+        ],
+      };
+
+      await MessageModel.create({
+        conversationId,
+        role: "user",
+        content: navigationMessage,
+      });
+
+      logger.info(
+        { conversationId },
+        "Added navigation back context message to conversation",
+      );
+    } catch (error) {
+      logger.error(
+        { error, conversationId },
+        "Failed to add navigation back message to conversation",
+      );
+    }
   }
 }
 

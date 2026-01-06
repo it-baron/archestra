@@ -10,9 +10,9 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
-  Move,
   Type,
   X,
+  ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import {
@@ -495,17 +495,14 @@ export function BrowserPanel({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: drag handle needs onMouseDown */}
       <div
         className={cn(
-          "flex flex-col gap-2 p-2 border-b bg-muted/50",
+          "flex flex-col gap-2 p-2 bg-muted/50",
+          !isMinimized && "border-b",
           !isMaximized && !isMinimized && "cursor-grab",
         )}
         onMouseDown={!isMaximized && !isMinimized ? handleDragStart : undefined}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {!isMaximized && !isMinimized && (
-              <Move className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-            )}
-            <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             <span className="text-xs font-medium">Browser Preview</span>
             {isConnected && (
               <span
@@ -646,7 +643,11 @@ export function BrowserPanel({
                   disabled={!isConnected}
                   title={isZoomedOut ? "Zoom to 100%" : "Zoom out to 50%"}
                 >
-                  <ZoomOut className="h-3 w-3" />
+                  {isZoomedOut ? (
+                    <ZoomIn className="h-3 w-3" />
+                  ) : (
+                    <ZoomOut className="h-3 w-3" />
+                  )}
                 </Button>
 
                 <div className="w-px h-4 bg-border mx-1" />

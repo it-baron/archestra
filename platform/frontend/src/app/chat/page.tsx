@@ -324,6 +324,13 @@ export default function ChatPage() {
   // Check if browser streaming feature is enabled
   const isBrowserStreamingEnabled = useFeatureFlag("browserStreamingEnabled");
 
+  // Close browser panel when switching to a profile without Playwright tools
+  useEffect(() => {
+    if (!hasPlaywrightMcp && isBrowserPanelOpen) {
+      setIsBrowserPanelOpen(false);
+    }
+  }, [hasPlaywrightMcp, isBrowserPanelOpen]);
+
   // Clear MCP Gateway sessions when opening a NEW conversation
   useEffect(() => {
     // Only clear sessions if this is a newly created conversation
@@ -1072,13 +1079,15 @@ export default function ChatPage() {
         onSuccess={() => router.push("/mcp-catalog/registry")}
       />
 
-      {isBrowserPanelOpen && isBrowserStreamingEnabled && (
-        <BrowserPanel
-          isOpen={isBrowserPanelOpen}
-          onClose={() => setIsBrowserPanelOpen(false)}
-          conversationId={conversationId}
-        />
-      )}
+      {isBrowserPanelOpen &&
+        isBrowserStreamingEnabled &&
+        hasPlaywrightMcp && (
+          <BrowserPanel
+            isOpen={isBrowserPanelOpen}
+            onClose={() => setIsBrowserPanelOpen(false)}
+            conversationId={conversationId}
+          />
+        )}
 
       {/* Right-side artifact panel */}
       <ConversationArtifactPanel
