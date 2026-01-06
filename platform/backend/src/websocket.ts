@@ -14,7 +14,7 @@ import {
   WebSocketMessageSchema,
 } from "@/types";
 
-const SCREENSHOT_INTERVAL_MS = 1000; // Stream at ~1 FPS
+const SCREENSHOT_INTERVAL_MS = 3000; // Stream at ~0.33 FPS (every 3 seconds)
 
 interface BrowserStreamSubscription {
   conversationId: string;

@@ -43,6 +43,7 @@ import {
   UpdateConversationSchema,
   UuidIdSchema,
 } from "@/types";
+import { safeJsonLength } from "@/utils/safe-json";
 import { mapProviderError } from "./errors";
 import { stripImagesFromMessages } from "./strip-images-from-messages";
 
@@ -231,9 +232,13 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         externalAgentId,
       });
 
+      // Strip images and large browser tool results from messages before sending to LLM
+      // This prevents context limit issues from accumulated screenshots and page snapshots
+      const strippedMessagesForLLM = stripImagesFromMessages(messages);
+
       // Stream with AI SDK
       // Build streamText config conditionally
-      const modelMessages = await convertToModelMessages(messages);
+      const modelMessages = await convertToModelMessages(strippedMessagesForLLM);
       const streamTextConfig: Parameters<typeof streamText>[0] = {
         model,
         messages: modelMessages,
@@ -325,10 +330,24 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
               messagesToSave = newMessages.slice(0, -1);
             }
 
-            if (messagesToSave.length > 0) {
-              // Strip base64 images from messages before storing
-              // Images have already been processed by LLM - no need to keep them
-              const strippedMessages = stripImagesFromMessages(messagesToSave);
+              if (messagesToSave.length > 0) {
+                // Strip base64 images and large browser tool results before storing
+                const beforeSize = safeJsonLength(messagesToSave);
+                const strippedMessages = stripImagesFromMessages(messagesToSave);
+                const afterSize = safeJsonLength(strippedMessages);
+
+                logger.info(
+                  {
+                    messageCount: messagesToSave.length,
+                    beforeSizeKB: Math.round(beforeSize.length / 1024),
+                    afterSizeKB: Math.round(afterSize.length / 1024),
+                    savedKB: Math.round(
+                      (beforeSize.length - afterSize.length) / 1024,
+                    ),
+                    sizeEstimateReliable: beforeSize.ok && afterSize.ok,
+                  },
+                  "[Chat] Stripped messages before saving to DB",
+                );
 
               // Append only new messages with timestamps
               const now = Date.now();

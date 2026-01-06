@@ -18,6 +18,7 @@ import type {
   CommonToolResult,
   InternalMcpCatalog,
 } from "@/types";
+import { previewToolResultContent } from "@/utils/tool-result-preview";
 import { K8sAttachTransport } from "./k8s-attach-transport";
 
 /**
@@ -50,9 +51,41 @@ export type TokenAuthContext = {
   userId?: string;
 };
 
+/**
+ * Simple async queue to serialize operations per connection
+ * Prevents concurrent MCP calls to the same server (important for stdio transport)
+ */
+class ConnectionQueue {
+  private queues = new Map<string, Promise<unknown>>();
+
+  /**
+   * Execute a function in queue for a given connection key.
+   * Calls to the same connectionKey are serialized.
+   */
+  async enqueue<T>(connectionKey: string, fn: () => Promise<T>): Promise<T> {
+    const currentQueue = this.queues.get(connectionKey) ?? Promise.resolve();
+
+    const newQueue = currentQueue
+      .catch(() => {}) // Ignore previous errors
+      .then(() => fn());
+
+    this.queues.set(connectionKey, newQueue);
+
+    try {
+      return await newQueue;
+    } finally {
+      // Clean up if this is the last item in queue
+      if (this.queues.get(connectionKey) === newQueue) {
+        this.queues.delete(connectionKey);
+      }
+    }
+  }
+}
+
 class McpClient {
   private clients = new Map<string, Client>();
   private activeConnections = new Map<string, Client>();
+  private connectionQueue = new ConnectionQueue();
 
   /**
    * Execute a single tool call against its assigned MCP server
@@ -91,47 +124,51 @@ class McpClient {
     }
     const { secrets } = secretsResult;
 
-    try {
-      // Get the appropriate transport
-      const transport = await this.getTransport(
-        catalogItem,
-        targetLocalMcpServerId,
-        secrets,
-      );
+    // Build connection cache key using the resolved target server ID
+    // This ensures each user gets their own connection for dynamic credentials
+    const connectionKey = `${catalogItem.id}:${targetLocalMcpServerId}`;
 
-      // Build connection cache key using the resolved target server ID
-      // This ensures each user gets their own connection for dynamic credentials
-      const connectionKey = `${catalogItem.id}:${targetLocalMcpServerId}`;
+    // Queue the tool call to prevent concurrent calls to the same MCP server
+    // This is critical for stdio transport which cannot handle concurrent requests
+    return this.connectionQueue.enqueue(connectionKey, async () => {
+      try {
+        // Get the appropriate transport
+        const transport = await this.getTransport(
+          catalogItem,
+          targetLocalMcpServerId,
+          secrets,
+        );
 
-      // Get or create client
-      const client = await this.getOrCreateClient(connectionKey, transport);
+        // Get or create client
+        const client = await this.getOrCreateClient(connectionKey, transport);
 
-      // Strip prefix and execute (same for all transports!)
-      const prefixName = tool.catalogName || tool.mcpServerName || "unknown";
-      const mcpToolName = this.stripServerPrefix(toolCall.name, prefixName);
+        // Strip prefix and execute (same for all transports!)
+        const prefixName = tool.catalogName || tool.mcpServerName || "unknown";
+        const mcpToolName = this.stripServerPrefix(toolCall.name, prefixName);
 
-      const result = await client.callTool({
-        name: mcpToolName,
-        arguments: toolCall.arguments,
-      });
+        const result = await client.callTool({
+          name: mcpToolName,
+          arguments: toolCall.arguments,
+        });
 
-      // Apply template and return
-      return await this.createSuccessResult(
-        toolCall,
-        agentId,
-        tool.mcpServerName || "unknown",
-        result.content,
-        !!result.isError,
-        tool.responseModifierTemplate,
-      );
-    } catch (error) {
-      return await this.createErrorResult(
-        toolCall,
-        agentId,
-        error instanceof Error ? error.message : "Unknown error",
-        tool.mcpServerName || "unknown",
-      );
-    }
+        // Apply template and return
+        return await this.createSuccessResult(
+          toolCall,
+          agentId,
+          tool.mcpServerName || "unknown",
+          result.content,
+          !!result.isError,
+          tool.responseModifierTemplate,
+        );
+      } catch (error) {
+        return await this.createErrorResult(
+          toolCall,
+          agentId,
+          error instanceof Error ? error.message : "Unknown error",
+          tool.mcpServerName || "unknown",
+        );
+      }
+    });
   }
 
   /**
@@ -672,10 +709,10 @@ class McpClient {
       if (toolResult.isError) {
         logData.error = toolResult.error;
       } else {
-        logData.resultContent =
-          typeof toolResult.content === "string"
-            ? toolResult.content.substring(0, 100)
-            : JSON.stringify(toolResult.content).substring(0, 100);
+        logData.resultContent = previewToolResultContent(
+          toolResult.content,
+          100,
+        );
       }
 
       logger.info(
