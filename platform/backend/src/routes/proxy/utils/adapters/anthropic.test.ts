@@ -202,5 +202,84 @@ describe("Anthropic MCP Adapters", () => {
         "Error: Tool execution failed",
       );
     });
+
+    test("converts MCP image blocks to Anthropic image format", () => {
+      const results = [
+        {
+          id: "tool_screenshot",
+          name: "browser_take_screenshot",
+          content: [
+            { type: "text", text: "Screenshot captured" },
+            {
+              type: "image",
+              data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+              mimeType: "image/png",
+            },
+          ],
+          isError: false,
+        },
+      ];
+
+      const messages = toolResultsToMessages(results);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe("user");
+      expect(messages[0].content).toHaveLength(1);
+      expect(messages[0].content[0].type).toBe("tool_result");
+      expect(messages[0].content[0].tool_use_id).toBe("tool_screenshot");
+      expect(messages[0].content[0].is_error).toBe(false);
+
+      // Content should be an array with text and image blocks
+      const content = messages[0].content[0].content;
+      expect(Array.isArray(content)).toBe(true);
+      expect(content).toHaveLength(2);
+
+      // Check text block
+      expect(content[0]).toEqual({
+        type: "text",
+        text: "Screenshot captured",
+      });
+
+      // Check image block - should be converted to Anthropic format
+      expect(content[1]).toEqual({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        },
+      });
+    });
+
+    test("handles image-only tool result", () => {
+      const results = [
+        {
+          id: "tool_img_only",
+          name: "browser_take_screenshot",
+          content: [
+            {
+              type: "image",
+              data: "base64data",
+              mimeType: "image/jpeg",
+            },
+          ],
+          isError: false,
+        },
+      ];
+
+      const messages = toolResultsToMessages(results);
+
+      const content = messages[0].content[0].content;
+      expect(Array.isArray(content)).toBe(true);
+      expect(content).toHaveLength(1);
+      expect(content[0]).toEqual({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/jpeg",
+          data: "base64data",
+        },
+      });
+    });
   });
 });

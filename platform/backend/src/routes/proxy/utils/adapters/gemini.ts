@@ -42,6 +42,75 @@ import type { CompressionStats } from "../toon-conversion";
 type GeminiContents = Gemini.Types.GenerateContentRequest["contents"];
 
 /**
+ * Check if content contains MCP image blocks
+ */
+function hasImageContent(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some((item) => isMcpImageBlock(item));
+}
+
+/**
+ * Check if item is an MCP image block
+ */
+function isMcpImageBlock(
+  item: unknown,
+): item is { type: "image"; data: string; mimeType?: string } {
+  if (typeof item !== "object" || item === null) return false;
+  if (!("type" in item) || item.type !== "image") return false;
+  return "data" in item && typeof item.data === "string";
+}
+
+/**
+ * Convert MCP image blocks to Gemini inlineData format
+ * Returns a response object with image data embedded
+ */
+function convertMcpImageBlocksToGemini(
+  content: unknown,
+): Record<string, unknown> {
+  if (!Array.isArray(content)) {
+    return { result: content };
+  }
+
+  if (!hasImageContent(content)) {
+    return { result: content };
+  }
+
+  // Extract text and image content
+  const textParts: string[] = [];
+  const imageParts: Array<{ mimeType: string; data: string }> = [];
+
+  for (const item of content) {
+    if (typeof item !== "object" || item === null) continue;
+
+    if (isMcpImageBlock(item)) {
+      const mimeType =
+        "mimeType" in item && typeof item.mimeType === "string"
+          ? item.mimeType
+          : "image/png";
+      imageParts.push({
+        mimeType,
+        data: item.data,
+      });
+    } else if ("type" in item && item.type === "text" && "text" in item) {
+      textParts.push(
+        typeof item.text === "string" ? item.text : JSON.stringify(item),
+      );
+    }
+  }
+
+  // Return structured response with images as inlineData
+  return {
+    text: textParts.join("\n"),
+    images: imageParts.map((img) => ({
+      inlineData: {
+        mimeType: img.mimeType,
+        data: img.data,
+      },
+    })),
+  };
+}
+
+/**
  * Convert Gemini contents to common format for trusted data evaluation
  */
 export function toCommonFormat(contents: GeminiContents): CommonMessage[] {
@@ -504,6 +573,7 @@ export function sdkUsageToRestUsageMetadata(
  * Convert common tool results to Gemini function response format.
  * Unlike other adapters that use JSON.stringify for content,
  * Gemini expects structured response objects.
+ * Handles image content by converting to Gemini inlineData format.
  */
 export function toolResultsToMessages(
   results: CommonToolResult[],
@@ -513,15 +583,35 @@ export function toolResultsToMessages(
     return [];
   }
 
-  return results.map((result) => ({
-    name: commonToolCalls.find((tc) => tc.id === result.id)?.name || "unknown",
-    response: result.isError
-      ? { error: result.error || "Tool execution failed" }
-      : typeof result.content === "string"
-        ? { result: result.content }
-        : (result.content as Record<string, unknown>),
-    is_error: result.isError,
-  }));
+  return results.map((result) => {
+    const name =
+      commonToolCalls.find((tc) => tc.id === result.id)?.name || "unknown";
+
+    let response: Record<string, unknown>;
+    if (result.isError) {
+      response = { error: result.error || "Tool execution failed" };
+    } else if (hasImageContent(result.content)) {
+      // Handle image content - convert to Gemini format
+      response = convertMcpImageBlocksToGemini(result.content);
+      logger.info(
+        {
+          toolName: name,
+          hasImages: true,
+        },
+        "Tool result contains images, converting to Gemini inlineData format",
+      );
+    } else if (typeof result.content === "string") {
+      response = { result: result.content };
+    } else {
+      response = result.content as Record<string, unknown>;
+    }
+
+    return {
+      name,
+      response,
+      is_error: result.isError,
+    };
+  });
 }
 
 /**

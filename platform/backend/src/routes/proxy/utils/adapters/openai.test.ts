@@ -167,5 +167,105 @@ describe("OpenAI MCP Adapters", () => {
         content: "Error: Network timeout",
       });
     });
+
+    test("converts MCP image blocks to OpenAI image_url format", () => {
+      const results = [
+        {
+          id: "call_screenshot",
+          name: "browser_take_screenshot",
+          content: [
+            { type: "text", text: "Screenshot captured" },
+            {
+              type: "image",
+              data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+              mimeType: "image/png",
+            },
+          ],
+          isError: false,
+        },
+      ];
+
+      const messages = toolResultsToMessages(results);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe("tool");
+      expect(messages[0].tool_call_id).toBe("call_screenshot");
+
+      // Content should be an array with text and image blocks
+      const content = messages[0].content;
+      expect(Array.isArray(content)).toBe(true);
+      expect(content).toHaveLength(2);
+
+      // Check text block
+      expect(content[0]).toEqual({
+        type: "text",
+        text: "Screenshot captured",
+      });
+
+      // Check image block - should be converted to OpenAI image_url format
+      expect(content[1]).toEqual({
+        type: "image_url",
+        image_url: {
+          url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        },
+      });
+    });
+
+    test("handles image-only tool result", () => {
+      const results = [
+        {
+          id: "call_img_only",
+          name: "browser_take_screenshot",
+          content: [
+            {
+              type: "image",
+              data: "base64data",
+              mimeType: "image/jpeg",
+            },
+          ],
+          isError: false,
+        },
+      ];
+
+      const messages = toolResultsToMessages(results);
+
+      const content = messages[0].content;
+      expect(Array.isArray(content)).toBe(true);
+      expect(content).toHaveLength(1);
+      expect(content[0]).toEqual({
+        type: "image_url",
+        image_url: {
+          url: "data:image/jpeg;base64,base64data",
+        },
+      });
+    });
+
+    test("uses default mime type when not provided", () => {
+      const results = [
+        {
+          id: "call_no_mime",
+          name: "browser_take_screenshot",
+          content: [
+            {
+              type: "image",
+              data: "base64data",
+              // No mimeType provided
+            },
+          ],
+          isError: false,
+        },
+      ];
+
+      const messages = toolResultsToMessages(results);
+
+      const content = messages[0].content;
+      expect(Array.isArray(content)).toBe(true);
+      expect(content[0]).toEqual({
+        type: "image_url",
+        image_url: {
+          url: "data:image/png;base64,base64data",
+        },
+      });
+    });
   });
 });

@@ -280,7 +280,7 @@ function isAnthropicTextBlock(
  * Convert MCP content array to Anthropic tool_result content format
  * Handles both text and image content blocks
  */
-function convertMcpContentToAnthropic(
+function convertMcpImageBlocksToAnthropic(
   content: unknown,
 ): AnthropicToolResultContent {
   if (!Array.isArray(content)) {
@@ -357,7 +357,7 @@ export function toolResultsToMessages(
           content = `Error: ${result.error || "Tool execution failed"}`;
         } else if (hasImageContent(result.content)) {
           // Handle image content - convert to Anthropic format
-          content = convertMcpContentToAnthropic(result.content);
+          content = convertMcpImageBlocksToAnthropic(result.content);
           logger.info(
             {
               toolName: result.name,

@@ -29,6 +29,86 @@ import { unwrapToolContent } from "../unwrap-tool-content";
 
 type OpenAiMessages = OpenAi.Types.ChatCompletionsRequest["messages"];
 
+// OpenAI tool result content types for image support
+type OpenAiToolResultImageBlock = {
+  type: "image_url";
+  image_url: {
+    url: string;
+  };
+};
+
+type OpenAiToolResultTextBlock = {
+  type: "text";
+  text: string;
+};
+
+type OpenAiToolResultContentBlock =
+  | OpenAiToolResultImageBlock
+  | OpenAiToolResultTextBlock;
+
+type OpenAiToolResultContent = string | OpenAiToolResultContentBlock[];
+
+/**
+ * Check if content contains MCP image blocks
+ */
+function hasImageContent(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some((item) => isMcpImageBlock(item));
+}
+
+/**
+ * Check if item is an MCP image block
+ */
+function isMcpImageBlock(
+  item: unknown,
+): item is { type: "image"; data: string; mimeType?: string } {
+  if (typeof item !== "object" || item === null) return false;
+  if (!("type" in item) || item.type !== "image") return false;
+  return "data" in item && typeof item.data === "string";
+}
+
+/**
+ * Convert MCP image blocks to OpenAI format
+ * OpenAI uses data URLs for base64 images in tool results
+ */
+function convertMcpImageBlocksToOpenAi(
+  content: unknown,
+): OpenAiToolResultContent {
+  if (!Array.isArray(content)) {
+    return JSON.stringify(content);
+  }
+
+  if (!hasImageContent(content)) {
+    return JSON.stringify(content);
+  }
+
+  const openAiContent: OpenAiToolResultContentBlock[] = [];
+
+  for (const item of content) {
+    if (typeof item !== "object" || item === null) continue;
+
+    if (isMcpImageBlock(item)) {
+      const mimeType =
+        "mimeType" in item && typeof item.mimeType === "string"
+          ? item.mimeType
+          : "image/png";
+      openAiContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${mimeType};base64,${item.data}`,
+        },
+      });
+    } else if ("type" in item && item.type === "text" && "text" in item) {
+      openAiContent.push({
+        type: "text",
+        text: typeof item.text === "string" ? item.text : JSON.stringify(item),
+      });
+    }
+  }
+
+  return openAiContent.length > 0 ? openAiContent : JSON.stringify(content);
+}
+
 /**
  * Convert OpenAI messages to common format for trusted data evaluation
  */
@@ -224,15 +304,31 @@ export function toolCallsToCommon(
 
 /**
  * Convert common tool results to OpenAI tool message format
+ * Handles image content by converting to OpenAI image_url format
  */
 export function toolResultsToMessages(
   results: CommonToolResult[],
   convertToToon = false,
-): Array<{ role: "tool"; tool_call_id: string; content: string }> {
+): Array<{
+  role: "tool";
+  tool_call_id: string;
+  content: OpenAiToolResultContent;
+}> {
   return results.map((result) => {
-    let content: string;
+    let content: OpenAiToolResultContent;
     if (result.isError) {
       content = `Error: ${result.error || "Tool execution failed"}`;
+    } else if (hasImageContent(result.content)) {
+      // Handle image content - convert to OpenAI format
+      content = convertMcpImageBlocksToOpenAi(result.content);
+      logger.info(
+        {
+          toolName: result.name,
+          toolCallId: result.id,
+          hasImages: true,
+        },
+        "Tool result contains images, converting to OpenAI image blocks",
+      );
     } else if (convertToToon) {
       const beforeJson = JSON.stringify(result.content);
       const afterToon = toonEncode(result.content);
