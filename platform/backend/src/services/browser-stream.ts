@@ -738,6 +738,28 @@ export class BrowserStreamService {
     // Playwright MCP returns screenshots as base64 images in content array
     const screenshot = this.extractScreenshot(result.content);
 
+    // Log screenshot size for debugging token usage issues
+    if (screenshot) {
+      // Extract base64 data (remove data URL prefix)
+      const base64Match = screenshot.match(/^data:([^;]+);base64,(.+)$/);
+      if (base64Match) {
+        const mimeType = base64Match[1];
+        const base64Data = base64Match[2];
+        const estimatedSizeKB = Math.round((base64Data.length * 3) / 4 / 1024);
+
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            mimeType,
+            base64Length: base64Data.length,
+            estimatedSizeKB,
+          },
+          "[BrowserStream] Screenshot captured",
+        );
+      }
+    }
+
     // Get URL reliably using browser_evaluate instead of extracting from screenshot response
     // This ensures the URL matches the page content shown in the screenshot
     const url = await this.getCurrentUrl(agentId, userContext);

@@ -26,10 +26,19 @@ import type {
   ToonCompressionResult,
   UsageView,
 } from "@/types";
+import { safeJsonLength } from "@/utils/safe-json";
+import {
+  estimateToolResultContentLength,
+  previewToolResultContent,
+} from "@/utils/tool-result-preview";
 import { MockOpenAIClient } from "../mock-openai-client";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
-import { hasImageContent, isMcpImageBlock } from "./mcp-image";
+import {
+  doesModelSupportImages,
+  hasImageContent,
+  isMcpImageBlock,
+} from "./mcp-image";
 
 // =============================================================================
 // TYPE ALIASES
@@ -184,21 +193,117 @@ class OpenAIRequestAdapter
   }
 
   convertToolResultContent(messages: OpenAiMessages): OpenAiMessages {
-    return messages.map((message) => {
+    const model = this.getModel();
+    const modelSupportsImages = doesModelSupportImages(model);
+    let toolMessagesWithImages = 0;
+    let strippedImageCount = 0;
+
+    // First, analyze all tool messages to understand what we're dealing with
+    for (const message of messages) {
+      if (message.role === "tool") {
+        const contentLength = estimateToolResultContentLength(message.content);
+        const contentSizeKB = Math.round(contentLength.length / 1024);
+        const contentPatternSample = previewToolResultContent(
+          message.content,
+          2000,
+        );
+        const contentPreview = contentPatternSample.slice(0, 200);
+
+        // Check for base64 patterns in preview to avoid full serialization.
+        const hasBase64 =
+          contentPatternSample.includes("data:image") ||
+          contentPatternSample.includes('"type":"image"') ||
+          contentPatternSample.includes('"data":"');
+
+        // Find tool name from previous assistant message
+        const toolName = this.findToolNameInMessages(
+          messages,
+          message.tool_call_id,
+        );
+
+        logger.info(
+          {
+            toolCallId: message.tool_call_id,
+            toolName,
+            contentSizeKB,
+            hasBase64,
+            contentLengthEstimated: contentLength.isEstimated,
+            isArray: Array.isArray(message.content),
+            contentPreview,
+          },
+          "[OpenAIAdapter] Analyzing tool result content",
+        );
+
+        // If it's an array, analyze each item
+        if (Array.isArray(message.content)) {
+          for (const [idx, item] of message.content.entries()) {
+            if (typeof item === "object" && item !== null) {
+              const itemType = (item as Record<string, unknown>).type;
+              const itemLength = estimateToolResultContentLength(item);
+              logger.info(
+                {
+                  toolCallId: message.tool_call_id,
+                  itemIndex: idx,
+                  itemType,
+                  itemSizeKB: Math.round(itemLength.length / 1024),
+                  itemLengthEstimated: itemLength.isEstimated,
+                  isMcpImage: isMcpImageBlock(item),
+                },
+                "[OpenAIAdapter] Tool result array item",
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const result = messages.map((message) => {
       if (message.role !== "tool") {
         return message;
       }
 
+      // Check if this tool message contains images
+      if (!hasImageContent(message.content)) {
+        return message;
+      }
+
+      // If model doesn't support images, strip image blocks from content
+      if (!modelSupportsImages) {
+        strippedImageCount++;
+        const strippedContent = stripImageBlocksFromContent(message.content);
+        return {
+          ...message,
+          content: strippedContent,
+        };
+      }
+
+      // Model supports images - convert MCP image blocks to OpenAI format
       const convertedContent = convertMcpImageBlocksToOpenAi(message.content);
       if (!convertedContent) {
         return message;
       }
 
+      toolMessagesWithImages++;
       return {
         ...message,
         content: convertedContent,
       };
     });
+
+    if (toolMessagesWithImages > 0 || strippedImageCount > 0) {
+      logger.info(
+        {
+          model,
+          modelSupportsImages,
+          totalMessages: messages.length,
+          toolMessagesWithImages,
+          strippedImageCount,
+        },
+        "[OpenAIAdapter] Processed tool messages with image content",
+      );
+    }
+
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -213,6 +318,23 @@ class OpenAIRequestAdapter
     }
 
     messages = this.convertToolResultContent(messages);
+
+    // Calculate approximate request size for debugging
+    const requestSize = safeJsonLength(messages);
+    const requestSizeKB = Math.round(requestSize.length / 1024);
+    const estimatedTokens = Math.round(requestSize.length / 4);
+
+    logger.info(
+      {
+        model: this.getModel(),
+        messageCount: messages.length,
+        requestSizeKB,
+        estimatedTokens,
+        sizeEstimateReliable: requestSize.ok,
+        hasToolResultUpdates: Object.keys(this.toolResultUpdates).length > 0,
+      },
+      "[OpenAIAdapter] Building provider request",
+    );
 
     return {
       ...this.request,
@@ -362,6 +484,21 @@ function convertMcpImageBlocksToOpenAi(
 
     if (isMcpImageBlock(item)) {
       const mimeType = item.mimeType ?? "image/png";
+      const base64Length = typeof item.data === "string" ? item.data.length : 0;
+      const estimatedSizeKB = Math.round((base64Length * 3) / 4 / 1024);
+
+      logger.info(
+        {
+          mimeType,
+          base64Length,
+          estimatedSizeKB,
+          // Estimate tokens: base64 chars / 4 (rough estimate for text tokens)
+          // But for images, OpenAI uses tile-based calculation
+          estimatedBase64Tokens: Math.round(base64Length / 4),
+        },
+        "[OpenAIAdapter] Converting MCP image block to OpenAI format",
+      );
+
       openAiContent.push({
         type: "image_url",
         image_url: {
@@ -379,7 +516,57 @@ function convertMcpImageBlocksToOpenAi(
     }
   }
 
+  logger.info(
+    {
+      totalBlocks: openAiContent.length,
+      imageBlocks: openAiContent.filter((b) => b.type === "image_url").length,
+      textBlocks: openAiContent.filter((b) => b.type === "text").length,
+    },
+    "[OpenAIAdapter] Converted MCP content to OpenAI format",
+  );
+
   return openAiContent.length > 0 ? openAiContent : null;
+}
+
+/**
+ * Strip image blocks from MCP content when model doesn't support images.
+ * Keeps text blocks and replaces image blocks with a placeholder message.
+ */
+function stripImageBlocksFromContent(content: unknown): string {
+  if (!Array.isArray(content)) {
+    return typeof content === "string" ? content : JSON.stringify(content);
+  }
+
+  const textParts: string[] = [];
+  let imageCount = 0;
+
+  for (const item of content) {
+    if (typeof item !== "object" || item === null) continue;
+    const candidate = item as Record<string, unknown>;
+
+    if (isMcpImageBlock(item)) {
+      imageCount++;
+    } else if (candidate.type === "text" && "text" in candidate) {
+      textParts.push(
+        typeof candidate.text === "string"
+          ? candidate.text
+          : JSON.stringify(candidate.text),
+      );
+    }
+  }
+
+  // Add placeholder for stripped images
+  if (imageCount > 0) {
+    textParts.push(
+      `[${imageCount} image(s) removed - model does not support image inputs]`,
+    );
+    logger.info(
+      { imageCount },
+      "[OpenAIAdapter] Stripped images from tool result (model does not support images)",
+    );
+  }
+
+  return textParts.join("\n");
 }
 
 // =============================================================================
