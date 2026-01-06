@@ -4,6 +4,35 @@ import { TeamTokenModel } from "@/models";
 import { describe, expect, test } from "@/test";
 import * as chatClient from "./chat-mcp-client";
 
+describe("isBrowserTool", () => {
+  test("returns true for tools containing 'playwright'", () => {
+    expect(chatClient.__test.isBrowserTool("mcp-playwright__navigate")).toBe(
+      true,
+    );
+    expect(chatClient.__test.isBrowserTool("some_playwright_tool_name")).toBe(
+      true,
+    );
+    expect(chatClient.__test.isBrowserTool("playwright")).toBe(true);
+  });
+
+  test("returns true for tools starting with 'browser_'", () => {
+    expect(chatClient.__test.isBrowserTool("browser_navigate")).toBe(true);
+    expect(chatClient.__test.isBrowserTool("browser_take_screenshot")).toBe(
+      true,
+    );
+    expect(chatClient.__test.isBrowserTool("browser_click")).toBe(true);
+    expect(chatClient.__test.isBrowserTool("browser_tabs")).toBe(true);
+  });
+
+  test("returns false for non-browser tools", () => {
+    expect(chatClient.__test.isBrowserTool("lookup_email")).toBe(false);
+    expect(chatClient.__test.isBrowserTool("get_weather")).toBe(false);
+    expect(chatClient.__test.isBrowserTool("search_database")).toBe(false);
+    // Edge case: contains 'browser' but doesn't start with 'browser_'
+    expect(chatClient.__test.isBrowserTool("my_browser_helper")).toBe(false);
+  });
+});
+
 describe("chat-mcp-client health check", () => {
   test("discards cached client when ping fails and fetches fresh tools", async ({
     makeAgent,
