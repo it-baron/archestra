@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { isArchestraMcpServerTool, TimeInMs } from "@shared";
+import { isBrowserMcpTool, isArchestraMcpServerTool, TimeInMs } from "@shared";
 import { type JSONSchema7, jsonSchema, type Tool } from "ai";
 import {
   type ArchestraContext,
@@ -18,13 +18,6 @@ import {
   ToolModel,
   UserTokenModel,
 } from "@/models";
-
-/**
- * Check if a tool is a browser-related tool that needs tab selection
- */
-function isBrowserTool(toolName: string): boolean {
-  return toolName.includes("playwright") || toolName.startsWith("browser_");
-}
 
 /**
  * MCP Gateway base URL (internal)
@@ -82,7 +75,7 @@ export const __test = {
     // For tests, individual keys should be cleared explicitly
   },
   getCacheKey,
-  isBrowserTool,
+  isBrowserMcpTool,
 };
 
 /**
@@ -570,7 +563,7 @@ export async function getChatMcpTools({
 
             if (
               conversationId &&
-              isBrowserTool(mcpTool.name) &&
+              isBrowserMcpTool(mcpTool.name) &&
               browserStreamFeature.isEnabled()
             ) {
               logger.info(

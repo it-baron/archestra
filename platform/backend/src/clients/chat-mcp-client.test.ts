@@ -26,32 +26,32 @@ vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
   StreamableHTTPClientTransport: vi.fn(),
 }));
 
-describe("isBrowserTool", () => {
+describe("isBrowserMcpTool", () => {
   test("returns true for tools containing 'playwright'", () => {
-    expect(chatClient.__test.isBrowserTool("mcp-playwright__navigate")).toBe(
-      true,
-    );
-    expect(chatClient.__test.isBrowserTool("some_playwright_tool_name")).toBe(
-      true,
-    );
-    expect(chatClient.__test.isBrowserTool("playwright")).toBe(true);
+    expect(
+      chatClient.__test.isBrowserMcpTool("mcp-playwright__navigate"),
+    ).toBe(true);
+    expect(
+      chatClient.__test.isBrowserMcpTool("some_playwright_tool_name"),
+    ).toBe(true);
+    expect(chatClient.__test.isBrowserMcpTool("playwright")).toBe(true);
   });
 
   test("returns true for tools starting with 'browser_'", () => {
-    expect(chatClient.__test.isBrowserTool("browser_navigate")).toBe(true);
-    expect(chatClient.__test.isBrowserTool("browser_take_screenshot")).toBe(
+    expect(chatClient.__test.isBrowserMcpTool("browser_navigate")).toBe(true);
+    expect(chatClient.__test.isBrowserMcpTool("browser_take_screenshot")).toBe(
       true,
     );
-    expect(chatClient.__test.isBrowserTool("browser_click")).toBe(true);
-    expect(chatClient.__test.isBrowserTool("browser_tabs")).toBe(true);
+    expect(chatClient.__test.isBrowserMcpTool("browser_click")).toBe(true);
+    expect(chatClient.__test.isBrowserMcpTool("browser_tabs")).toBe(true);
   });
 
   test("returns false for non-browser tools", () => {
-    expect(chatClient.__test.isBrowserTool("lookup_email")).toBe(false);
-    expect(chatClient.__test.isBrowserTool("get_weather")).toBe(false);
-    expect(chatClient.__test.isBrowserTool("search_database")).toBe(false);
+    expect(chatClient.__test.isBrowserMcpTool("lookup_email")).toBe(false);
+    expect(chatClient.__test.isBrowserMcpTool("get_weather")).toBe(false);
+    expect(chatClient.__test.isBrowserMcpTool("search_database")).toBe(false);
     // Edge case: contains 'browser' but doesn't start with 'browser_'
-    expect(chatClient.__test.isBrowserTool("my_browser_helper")).toBe(false);
+    expect(chatClient.__test.isBrowserMcpTool("my_browser_helper")).toBe(false);
   });
 });
 

@@ -1,4 +1,8 @@
-import { archestraApiSdk, type SupportedProvider } from "@shared";
+import {
+  archestraApiSdk,
+  isBrowserMcpTool,
+  type SupportedProvider,
+} from "@shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -322,10 +326,7 @@ export function useHasPlaywrightMcpTools(agentId: string | undefined) {
   return (
     toolsQuery.data?.some((tool) => {
       const toolName = tool.name;
-      return (
-        typeof toolName === "string" &&
-        (toolName.includes("playwright") || toolName.startsWith("browser_"))
-      );
+      return typeof toolName === "string" && isBrowserMcpTool(toolName);
     }) ?? false
   );
 }

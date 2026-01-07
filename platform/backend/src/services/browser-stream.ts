@@ -1,3 +1,4 @@
+import { isBrowserMcpTool } from "@shared";
 import { getChatMcpClient } from "@/clients/chat-mcp-client";
 import logger from "@/logging";
 import { ToolModel } from "@/models";
@@ -109,7 +110,7 @@ export class BrowserStreamService {
     const browserToolNames = tools.flatMap((tool) => {
       const toolName = tool.name;
       if (typeof toolName !== "string") return [];
-      if (toolName.includes("playwright") || toolName.startsWith("browser_")) {
+      if (isBrowserMcpTool(toolName)) {
         return [toolName];
       }
       return [];
