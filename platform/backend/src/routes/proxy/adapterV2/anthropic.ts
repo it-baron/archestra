@@ -25,7 +25,7 @@ import type {
 import { MockAnthropicClient } from "../mock-anthropic-client";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
-import { hasImageContent, isMcpImageBlock } from "./mcp-image";
+import { hasImageContent, isMcpImageBlock } from "../utils/mcp-image";
 
 // =============================================================================
 // TYPE ALIASES

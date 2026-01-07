@@ -38,7 +38,7 @@ import {
   doesModelSupportImages,
   hasImageContent,
   isMcpImageBlock,
-} from "./mcp-image";
+} from "../utils/mcp-image";
 
 // =============================================================================
 // TYPE ALIASES

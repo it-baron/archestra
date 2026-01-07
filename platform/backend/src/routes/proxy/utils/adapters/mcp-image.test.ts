@@ -1,50 +1,20 @@
 import { describe, expect, test } from "@/test";
 import { hasImageContent, isMcpImageBlock } from "./mcp-image";
 
-describe("mcp-image utils", () => {
-  describe("isMcpImageBlock", () => {
-    test("returns true for valid MCP image blocks", () => {
-      expect(isMcpImageBlock({ type: "image", data: "abc" })).toBe(true);
-      expect(
-        isMcpImageBlock({
-          type: "image",
-          data: "abc",
-          mimeType: "image/png",
-        }),
-      ).toBe(true);
-    });
-
-    test("returns false for non-image blocks", () => {
-      expect(isMcpImageBlock(undefined)).toBe(false);
-      expect(isMcpImageBlock([])).toBe(false);
-      expect(isMcpImageBlock({ type: "text", data: "abc" })).toBe(false);
-      expect(isMcpImageBlock({ type: "image" })).toBe(false);
-      expect(isMcpImageBlock({ type: "image", data: 123 })).toBe(false);
-    });
+/**
+ * Tests that the re-exports from ../mcp-image work correctly.
+ * Main tests are in ../mcp-image.test.ts
+ */
+describe("adapters/mcp-image re-exports", () => {
+  test("re-exports isMcpImageBlock", () => {
+    expect(typeof isMcpImageBlock).toBe("function");
+    expect(isMcpImageBlock({ type: "image", data: "abc" })).toBe(true);
   });
 
-  describe("hasImageContent", () => {
-    test("returns false for non-array content", () => {
-      expect(hasImageContent(undefined)).toBe(false);
-      expect(hasImageContent("not-an-array")).toBe(false);
-      expect(hasImageContent({})).toBe(false);
-    });
-
-    test("returns true when array contains MCP image blocks", () => {
-      expect(hasImageContent([{ type: "text", text: "hello" }])).toBe(false);
-      expect(hasImageContent([{ type: "image", data: "abc" }])).toBe(true);
-    });
-
-    test("supports custom image predicates", () => {
-      const isCustomImage = (item: unknown): boolean => {
-        if (typeof item !== "object" || item === null) return false;
-        const candidate = item as Record<string, unknown>;
-        return candidate.kind === "image";
-      };
-
-      expect(
-        hasImageContent([{ kind: "image", payload: "x" }], isCustomImage),
-      ).toBe(true);
-    });
+  test("re-exports hasImageContent", () => {
+    expect(typeof hasImageContent).toBe("function");
+    expect(
+      hasImageContent([{ type: "image", data: "abc", mimeType: "image/png" }]),
+    ).toBe(true);
   });
 });

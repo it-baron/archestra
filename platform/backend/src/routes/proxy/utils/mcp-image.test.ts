@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@/test";
 import { hasImageContent, isMcpImageBlock } from "./mcp-image";
 
-describe("adapterV2 mcp-image", () => {
+describe("mcp-image utils", () => {
   describe("isMcpImageBlock", () => {
     test("returns true for valid MCP image blocks", () => {
       expect(isMcpImageBlock({ type: "image", data: "abc" })).toBe(true);
