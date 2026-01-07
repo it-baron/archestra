@@ -602,10 +602,7 @@ export class BrowserStreamService {
       userContext.userId,
       conversationId,
     );
-    const tabIndex = conversationTabMap.get(tabKey);
-    if (tabIndex === undefined) {
-      return { success: true }; // No tab to close
-    }
+    let tabIndex = conversationTabMap.get(tabKey);
 
     const tabsTool = await this.findTabsTool(agentId);
     if (!tabsTool) {
@@ -621,6 +618,55 @@ export class BrowserStreamService {
     if (!client) {
       conversationTabMap.delete(tabKey);
       return { success: true };
+    }
+
+    // If we don't have the tab index in memory (e.g., after server restart),
+    // try to find it by listing all tabs and looking for one with matching URL pattern
+    // or just close all non-zero tabs since we can't identify which is which
+    if (tabIndex === undefined) {
+      logger.info(
+        { agentId, conversationId },
+        "Tab index not in memory, checking browser tabs",
+      );
+
+      try {
+        const listResult = await client.callTool({
+          name: tabsTool,
+          arguments: { action: "list" },
+        });
+
+        if (!listResult.isError) {
+          const tabs = this.parseTabsList(listResult.content);
+          // If there's only one tab (index 0), nothing to close
+          if (tabs.length <= 1) {
+            return { success: true };
+          }
+
+          // Since we can't identify which tab belongs to which conversation,
+          // we'll close the highest-indexed tab (most recently created)
+          // This is a best-effort cleanup
+          const maxTab = tabs.reduce((max, tab) =>
+            tab.index > max.index ? tab : max,
+          );
+          if (maxTab.index > 0) {
+            tabIndex = maxTab.index;
+            logger.info(
+              { agentId, conversationId, tabIndex },
+              "Closing most recent tab as best-effort cleanup",
+            );
+          }
+        }
+      } catch (error) {
+        logger.warn(
+          { error, agentId, conversationId },
+          "Failed to list tabs for cleanup",
+        );
+        return { success: true };
+      }
+    }
+
+    if (tabIndex === undefined || tabIndex === 0) {
+      return { success: true }; // No tab to close or can't close tab 0
     }
 
     try {
