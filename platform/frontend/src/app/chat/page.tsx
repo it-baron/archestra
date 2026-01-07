@@ -41,6 +41,7 @@ import { useProfiles } from "@/lib/agent.query";
 import { useHasPermissions } from "@/lib/auth.query";
 import {
   useConversation,
+  useConversations,
   useCreateConversation,
   useHasPlaywrightMcpTools,
   useUpdateConversation,
