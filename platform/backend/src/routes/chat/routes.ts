@@ -5,6 +5,7 @@ import {
   generateText,
   stepCountIs,
   streamText,
+  type UIMessage,
 } from "ai";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -243,7 +244,10 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       // Stream with AI SDK
       // Build streamText config conditionally
-      const modelMessages = await convertToModelMessages(strippedMessagesForLLM);
+      // Cast to UIMessage[] - UiMessage is structurally compatible at runtime
+      const modelMessages = await convertToModelMessages(
+        strippedMessagesForLLM as unknown as Omit<UIMessage, "id">[],
+      );
       const streamTextConfig: Parameters<typeof streamText>[0] = {
         model,
         messages: modelMessages,
@@ -275,7 +279,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
           // See: https://ai-sdk.dev/docs/troubleshooting/streaming-not-working-when-proxied
           "Content-Encoding": "none",
         },
-        originalMessages: messages,
+        originalMessages: messages as UIMessage[],
         onError: (error) => {
           logger.error(
             { error, conversationId, agentId: conversation.agentId },
@@ -361,7 +365,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 const now = Date.now();
                 const messageData = strippedMessages.map((msg, index) => ({
                   conversationId,
-                  role: msg.role,
+                  role: msg.role ?? "assistant",
                   content: msg, // Store entire UIMessage (with images stripped)
                   createdAt: new Date(now + index), // Preserve order
                 }));

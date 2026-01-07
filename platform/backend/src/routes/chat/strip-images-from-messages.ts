@@ -46,11 +46,15 @@ export type UiMessagePart = {
   output?: unknown;
   result?: unknown;
   toolName?: string;
+  text?: string;
+  toolCallId?: string;
+  source?: unknown;
+  [key: string]: unknown;
 };
 
 export type UiMessage = {
   id?: string;
-  role?: string;
+  role: "system" | "user" | "assistant" | "tool";
   parts?: UiMessagePart[];
 };
 

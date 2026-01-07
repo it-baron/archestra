@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { __test, stripImagesFromMessages } from "./strip-images-from-messages";
+import {
+  __test,
+  stripImagesFromMessages,
+  type UiMessage,
+} from "./strip-images-from-messages";
 
 const { isBase64ImageData, stripImagesFromObject, IMAGE_STRIPPED_PLACEHOLDER } =
   __test;
@@ -120,7 +124,7 @@ describe("strip-images-from-messages", () => {
 
   describe("stripImagesFromMessages", () => {
     test("converts image blocks to text in tool-result parts", () => {
-      const messages = [
+      const messages: UiMessage[] = [
         {
           id: "msg1",
           role: "assistant",
@@ -145,16 +149,18 @@ describe("strip-images-from-messages", () => {
       const result = stripImagesFromMessages(messages);
 
       // Text block preserved
-      expect(result[0].parts[0].result[0].text).toBe("Screenshot captured");
+      const toolResult = result[0].parts?.[0].result as Array<{
+        type: string;
+        text: string;
+      }>;
+      expect(toolResult[0].text).toBe("Screenshot captured");
       // Image block converted to text block
-      expect(result[0].parts[0].result[1].type).toBe("text");
-      expect(result[0].parts[0].result[1].text).toBe(
-        IMAGE_STRIPPED_PLACEHOLDER,
-      );
+      expect(toolResult[1].type).toBe("text");
+      expect(toolResult[1].text).toBe(IMAGE_STRIPPED_PLACEHOLDER);
     });
 
     test("converts direct image parts to text parts", () => {
-      const messages = [
+      const messages: UiMessage[] = [
         {
           id: "msg1",
           role: "user",
@@ -174,14 +180,15 @@ describe("strip-images-from-messages", () => {
       const result = stripImagesFromMessages(messages);
 
       // Image part converted to text part
-      expect(result[0].parts[0].type).toBe("text");
-      expect(result[0].parts[0].text).toBe(IMAGE_STRIPPED_PLACEHOLDER);
+      const part = result[0].parts?.[0];
+      expect(part?.type).toBe("text");
+      expect(part?.text).toBe(IMAGE_STRIPPED_PLACEHOLDER);
       // Original source should not exist
-      expect(result[0].parts[0].source).toBeUndefined();
+      expect(part?.source).toBeUndefined();
     });
 
     test("preserves text parts", () => {
-      const messages = [
+      const messages: UiMessage[] = [
         {
           id: "msg1",
           role: "assistant",
@@ -197,9 +204,7 @@ describe("strip-images-from-messages", () => {
     });
 
     test("handles messages without parts", () => {
-      const messages = [
-        { id: "msg1", role: "system", content: "You are helpful" },
-      ];
+      const messages: UiMessage[] = [{ id: "msg1", role: "system" }];
 
       const result = stripImagesFromMessages(messages);
 
@@ -207,7 +212,7 @@ describe("strip-images-from-messages", () => {
     });
 
     test("handles mixed content", () => {
-      const messages = [
+      const messages: UiMessage[] = [
         {
           id: "msg1",
           role: "assistant",
@@ -217,7 +222,6 @@ describe("strip-images-from-messages", () => {
               type: "tool-call",
               toolCallId: "call_1",
               toolName: "browser_take_screenshot",
-              args: {},
             },
           ],
         },
@@ -246,15 +250,19 @@ describe("strip-images-from-messages", () => {
       const result = stripImagesFromMessages(messages);
 
       // Tool call preserved
-      expect(result[0].parts[1].toolName).toBe("browser_take_screenshot");
+      expect(result[0].parts?.[1]?.toolName).toBe("browser_take_screenshot");
       // Image stripped from tool result
-      expect(result[1].parts[0].result.image_data).toBe(
-        IMAGE_STRIPPED_PLACEHOLDER,
-      );
+      const toolResult = result[1].parts?.[0]?.result as {
+        image_data: string;
+        description: string;
+      };
+      expect(toolResult.image_data).toBe(IMAGE_STRIPPED_PLACEHOLDER);
       // Description preserved
-      expect(result[1].parts[0].result.description).toBe("Homepage screenshot");
+      expect(toolResult.description).toBe("Homepage screenshot");
       // Text preserved
-      expect(result[2].parts[0].text).toBe("The page shows a welcome message.");
+      expect(result[2].parts?.[0]?.text).toBe(
+        "The page shows a welcome message.",
+      );
     });
   });
 });

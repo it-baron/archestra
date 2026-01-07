@@ -8,7 +8,7 @@ import { vi } from "vitest";
 import type * as originalConfigModule from "@/config";
 import { BrowserStreamService } from "@/services/browser-stream";
 import { beforeEach, describe, expect, test } from "@/test";
-import type { User } from "@/types";
+import { ApiError, type User } from "@/types";
 
 // Mock config to ENABLE the feature for these tests
 vi.mock("@/config", async (importOriginal) => {
@@ -32,7 +32,17 @@ const buildAppWithUser = async (user: User, organizationId: string) => {
   const app = Fastify({ logger: false })
     .withTypeProvider<ZodTypeProvider>()
     .setValidatorCompiler(validatorCompiler)
-    .setSerializerCompiler(serializerCompiler);
+    .setSerializerCompiler(serializerCompiler)
+    .setErrorHandler<ApiError | Error>(function (error, _request, reply) {
+      if (error instanceof ApiError) {
+        return reply.status(error.statusCode).send({
+          error: { message: error.message, type: error.type },
+        });
+      }
+      return reply.status(500).send({
+        error: { message: error.message, type: "api_internal_server_error" },
+      });
+    });
 
   app.decorateRequest("user");
   app.decorateRequest("organizationId");
@@ -77,10 +87,11 @@ describe("browser-stream routes authorization", () => {
       url: `/api/browser-stream/${conversation.id}/available`,
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      available: false,
-      error: "Conversation not found",
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        message: "Conversation not found",
+      }),
     });
     expect(availabilitySpy).not.toHaveBeenCalled();
 

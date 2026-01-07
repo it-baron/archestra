@@ -2,7 +2,6 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { hasPermission } from "@/auth";
-import logger from "@/logging";
 import { ConversationModel } from "@/models";
 import type { BrowserUserContext } from "@/services/browser-stream";
 import { browserStreamFeature } from "@/services/browser-stream-feature";
@@ -85,7 +84,6 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
           z.object({
             available: z.boolean(),
             tools: z.array(z.string()).optional(),
-            error: z.string().optional(),
           }),
         ),
       },
@@ -99,28 +97,11 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
         request.organizationId,
       );
       if (!agentId) {
-        return reply.send({
-          available: false,
-          error: "Conversation not found",
-        });
+        throw new ApiError(404, "Conversation not found");
       }
 
-      try {
-        const result = await browserStreamFeature.checkAvailability(agentId);
-        return reply.send(result);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          return reply.send({ available: false, error: error.message });
-        }
-        logger.error(
-          { error, conversationId },
-          "Failed to check browser availability",
-        );
-        return reply.send({
-          available: false,
-          error: "Availability check failed",
-        });
-      }
+      const result = await browserStreamFeature.checkAvailability(agentId);
+      return reply.send(result);
     },
   );
 
@@ -135,7 +116,6 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
           z.object({
             success: z.boolean(),
             url: z.string().optional(),
-            error: z.string().optional(),
           }),
         ),
       },
@@ -150,28 +130,17 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
         request.organizationId,
       );
       if (!agentId) {
-        return reply.send({ success: false, error: "Conversation not found" });
+        throw new ApiError(404, "Conversation not found");
       }
 
-      try {
-        const userContext = await getUserContext(request);
-        const result = await browserStreamFeature.navigate(
-          agentId,
-          conversationId,
-          url,
-          userContext,
-        );
-        return reply.send(result);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          return reply.send({ success: false, error: error.message });
-        }
-        logger.error(
-          { error, conversationId, url },
-          "Failed to navigate browser",
-        );
-        return reply.send({ success: false, error: "Navigation failed" });
-      }
+      const userContext = await getUserContext(request);
+      const result = await browserStreamFeature.navigate(
+        agentId,
+        conversationId,
+        url,
+        userContext,
+      );
+      return reply.send(result);
     },
   );
 
@@ -185,7 +154,6 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
           z.object({
             screenshot: z.string().optional(),
             url: z.string().optional(),
-            error: z.string().optional(),
           }),
         ),
       },
@@ -199,24 +167,16 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
         request.organizationId,
       );
       if (!agentId) {
-        return reply.send({ error: "Conversation not found" });
+        throw new ApiError(404, "Conversation not found");
       }
 
-      try {
-        const userContext = await getUserContext(request);
-        const result = await browserStreamFeature.takeScreenshot(
-          agentId,
-          conversationId,
-          userContext,
-        );
-        return reply.send(result);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          return reply.send({ error: error.message });
-        }
-        logger.error({ error, conversationId }, "Failed to take screenshot");
-        return reply.send({ error: "Screenshot failed" });
-      }
+      const userContext = await getUserContext(request);
+      const result = await browserStreamFeature.takeScreenshot(
+        agentId,
+        conversationId,
+        userContext,
+      );
+      return reply.send(result);
     },
   );
 
@@ -230,7 +190,6 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
           z.object({
             success: z.boolean(),
             tabIndex: z.number().optional(),
-            error: z.string().optional(),
           }),
         ),
       },
@@ -244,27 +203,16 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
         request.organizationId,
       );
       if (!agentId) {
-        return reply.send({ success: false, error: "Conversation not found" });
+        throw new ApiError(404, "Conversation not found");
       }
 
-      try {
-        const userContext = await getUserContext(request);
-        const result = await browserStreamFeature.activateTab(
-          agentId,
-          conversationId,
-          userContext,
-        );
-        return reply.send(result);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          return reply.send({ success: false, error: error.message });
-        }
-        logger.error(
-          { error, conversationId },
-          "Failed to activate browser tab",
-        );
-        return reply.send({ success: false, error: "Tab activation failed" });
-      }
+      const userContext = await getUserContext(request);
+      const result = await browserStreamFeature.activateTab(
+        agentId,
+        conversationId,
+        userContext,
+      );
+      return reply.send(result);
     },
   );
 
@@ -277,7 +225,6 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: constructResponseSchema(
           z.object({
             success: z.boolean(),
-            error: z.string().optional(),
           }),
         ),
       },
@@ -291,25 +238,17 @@ const browserStreamRoutes: FastifyPluginAsyncZod = async (fastify) => {
         request.organizationId,
       );
       if (!agentId) {
-        // No conversation means no tab to close
+        // No conversation means no tab to close - this is idempotent
         return reply.send({ success: true });
       }
 
-      try {
-        const userContext = await getUserContext(request);
-        const result = await browserStreamFeature.closeTab(
-          agentId,
-          conversationId,
-          userContext,
-        );
-        return reply.send(result);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          return reply.send({ success: false, error: error.message });
-        }
-        logger.error({ error, conversationId }, "Failed to close browser tab");
-        return reply.send({ success: false, error: "Tab close failed" });
-      }
+      const userContext = await getUserContext(request);
+      const result = await browserStreamFeature.closeTab(
+        agentId,
+        conversationId,
+        userContext,
+      );
+      return reply.send(result);
     },
   );
 };
