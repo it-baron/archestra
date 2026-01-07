@@ -290,25 +290,44 @@ export class BrowserStreamService {
       const existingTabIndex = conversationTabMap.get(tabKey);
 
       if (existingTabIndex !== undefined) {
-        const selectExistingResult = await client.callTool({
-          name: tabsTool,
-          arguments: { action: "select", index: existingTabIndex },
-        });
+        try {
+          const selectExistingResult = await client.callTool({
+            name: tabsTool,
+            arguments: { action: "select", index: existingTabIndex },
+          });
 
-        if (!selectExistingResult.isError) {
-          return { success: true, tabIndex: existingTabIndex };
+          if (!selectExistingResult.isError) {
+            return { success: true, tabIndex: existingTabIndex };
+          }
+
+          const errorText = this.extractTextContent(
+            selectExistingResult.content,
+          );
+          logger.warn(
+            {
+              agentId,
+              conversationId,
+              tabIndex: existingTabIndex,
+              error: errorText,
+            },
+            "Failed to select existing conversation tab, creating a new one",
+          );
+        } catch (selectError) {
+          // MCP tool call threw exception (e.g., tab no longer exists)
+          logger.warn(
+            {
+              agentId,
+              conversationId,
+              tabIndex: existingTabIndex,
+              error:
+                selectError instanceof Error
+                  ? selectError.message
+                  : String(selectError),
+            },
+            "Exception selecting existing tab, clearing stale entry and creating new one",
+          );
         }
-
-        const errorText = this.extractTextContent(selectExistingResult.content);
-        logger.warn(
-          {
-            agentId,
-            conversationId,
-            tabIndex: existingTabIndex,
-            error: errorText,
-          },
-          "Failed to select existing conversation tab, creating a new one",
-        );
+        // Clear stale entry and fall through to create new tab
         conversationTabMap.delete(tabKey);
       }
 
