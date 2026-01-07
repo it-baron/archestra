@@ -214,11 +214,9 @@ describe("BrowserStreamService URL handling", () => {
       })
       .mockResolvedValueOnce({ isError: false, content: [] });
 
-    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue(
-      {
-        callTool,
-      } as never,
-    );
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue({
+      callTool,
+    } as never);
 
     const result = await browserService.selectOrCreateTab(
       agentId,

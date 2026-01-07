@@ -26,14 +26,6 @@ const BROWSER_TOOLS = [
 // Size threshold in characters - results larger than this will be stripped
 const SIZE_THRESHOLD = 2000;
 
-// OpenAI message type for tool results
-interface ToolMessage {
-  role: "tool";
-  content: string | unknown;
-  tool_call_id: string;
-  name?: string;
-}
-
 // Generic message type
 interface Message {
   role: string;
@@ -213,7 +205,10 @@ function getContentSize(content: string | unknown): ContentSize {
 /**
  * Create a placeholder for a stripped browser tool result
  */
-function createPlaceholder(toolName: string, content: string | unknown): string {
+function createPlaceholder(
+  toolName: string,
+  content: string | unknown,
+): string {
   const shortName = toolName.split("__").pop() || toolName;
   const url = extractPageUrl(content);
   return `[Page ${url} ${shortName} was here]`;

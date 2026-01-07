@@ -28,9 +28,9 @@ vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
 
 describe("isBrowserMcpTool", () => {
   test("returns true for tools containing 'playwright'", () => {
-    expect(
-      chatClient.__test.isBrowserMcpTool("mcp-playwright__navigate"),
-    ).toBe(true);
+    expect(chatClient.__test.isBrowserMcpTool("mcp-playwright__navigate")).toBe(
+      true,
+    );
     expect(
       chatClient.__test.isBrowserMcpTool("some_playwright_tool_name"),
     ).toBe(true);

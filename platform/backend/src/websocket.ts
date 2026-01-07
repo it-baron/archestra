@@ -695,7 +695,9 @@ class WebSocketService {
         payload: {
           conversationId,
           error:
-            error instanceof Error ? error.message : "Screenshot capture failed",
+            error instanceof Error
+              ? error.message
+              : "Screenshot capture failed",
         },
       });
     }

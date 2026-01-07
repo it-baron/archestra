@@ -32,13 +32,13 @@ import {
   previewToolResultContent,
 } from "@/utils/tool-result-preview";
 import { MockOpenAIClient } from "../mock-openai-client";
-import type { CompressionStats } from "../utils/toon-conversion";
-import { unwrapToolContent } from "../utils/unwrap-tool-content";
 import {
   doesModelSupportImages,
   hasImageContent,
   isMcpImageBlock,
 } from "../utils/mcp-image";
+import type { CompressionStats } from "../utils/toon-conversion";
+import { unwrapToolContent } from "../utils/unwrap-tool-content";
 
 // =============================================================================
 // TYPE ALIASES

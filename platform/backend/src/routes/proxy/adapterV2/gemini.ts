@@ -29,9 +29,9 @@ import type {
 import { MockGeminiClient } from "../mock-gemini-client";
 import * as geminiUtils from "../utils/adapters/gemini";
 import { createGoogleGenAIClient } from "../utils/gemini-client";
+import { hasImageContent, isMcpImageBlock } from "../utils/mcp-image";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
-import { hasImageContent, isMcpImageBlock } from "../utils/mcp-image";
 
 // =============================================================================
 // TYPE ALIASES

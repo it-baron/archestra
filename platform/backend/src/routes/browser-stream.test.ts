@@ -33,7 +33,7 @@ const buildAppWithUser = async (user: User, organizationId: string) => {
     .withTypeProvider<ZodTypeProvider>()
     .setValidatorCompiler(validatorCompiler)
     .setSerializerCompiler(serializerCompiler)
-    .setErrorHandler<ApiError | Error>(function (error, _request, reply) {
+    .setErrorHandler<ApiError | Error>((error, _request, reply) => {
       if (error instanceof ApiError) {
         return reply.status(error.statusCode).send({
           error: { message: error.message, type: error.type },

@@ -20,7 +20,10 @@ export function safeJsonStringify(value: unknown): SafeJsonStringifyResult {
   return { value: String(value), ok: false };
 }
 
-export function safeJsonLength(value: unknown): { length: number; ok: boolean } {
+export function safeJsonLength(value: unknown): {
+  length: number;
+  ok: boolean;
+} {
   const result = safeJsonStringify(value);
   return { length: result.value.length, ok: result.ok };
 }

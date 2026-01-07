@@ -41,7 +41,6 @@ import { useProfiles } from "@/lib/agent.query";
 import { useHasPermissions } from "@/lib/auth.query";
 import {
   useConversation,
-  useConversations,
   useCreateConversation,
   useHasPlaywrightMcpTools,
   useUpdateConversation,
@@ -137,7 +136,6 @@ export default function ChatPage() {
     (typeof prompts)[number] | null
   >(null);
   const { data: editingPrompt } = usePrompt(editingPromptId || "");
-  const { data: allConversations = [] } = useConversations();
 
   // Set initial agent from URL param or default when data loads
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { isBrowserMcpTool, isArchestraMcpServerTool, TimeInMs } from "@shared";
+import { isArchestraMcpServerTool, isBrowserMcpTool, TimeInMs } from "@shared";
 import { type JSONSchema7, jsonSchema, type Tool } from "ai";
 import {
   type ArchestraContext,

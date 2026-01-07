@@ -19,7 +19,9 @@ export function estimateMessagesSize(messages: unknown[]): MessageSizeEstimate {
     const candidate = message as Record<string, unknown>;
 
     if ("content" in candidate) {
-      const contentEstimate = estimateToolResultContentLength(candidate.content);
+      const contentEstimate = estimateToolResultContentLength(
+        candidate.content,
+      );
       length += contentEstimate.length;
       if (contentEstimate.isEstimated) {
         isEstimated = true;
@@ -61,7 +63,10 @@ export function estimateMessagesSize(messages: unknown[]): MessageSizeEstimate {
           toolCallRecord.function && typeof toolCallRecord.function === "object"
             ? (toolCallRecord.function as Record<string, unknown>)
             : null;
-        if (toolCallFunction && typeof toolCallFunction.arguments === "string") {
+        if (
+          toolCallFunction &&
+          typeof toolCallFunction.arguments === "string"
+        ) {
           length += toolCallFunction.arguments.length;
           isEstimated = true;
         }

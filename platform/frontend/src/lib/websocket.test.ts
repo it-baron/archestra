@@ -97,5 +97,4 @@ describe("WebSocketService", () => {
     websocketService.send({ type: "hello-world", payload: {} });
     expect(socket.sent).toHaveLength(1);
   });
-
 });

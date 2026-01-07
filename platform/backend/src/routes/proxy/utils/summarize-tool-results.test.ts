@@ -91,8 +91,8 @@ ${"      - generic [ref=e100]: ".repeat(100)}
   });
 
   test("strips older browser_snapshot results but preserves the most recent", () => {
-    const largeSnapshot = "### Open tabs\n" + "x".repeat(5000);
-    const newerSnapshot = "### Open tabs\n" + "y".repeat(6000);
+    const largeSnapshot = `### Open tabs\n${"x".repeat(5000)}`;
+    const newerSnapshot = `### Open tabs\n${"y".repeat(6000)}`;
 
     const messages = [
       {
