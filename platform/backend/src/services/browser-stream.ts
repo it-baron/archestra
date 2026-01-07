@@ -590,7 +590,12 @@ export class BrowserStreamService {
   }
 
   /**
-   * Close a conversation's browser tab
+   * Close a conversation's browser tab.
+   *
+   * Note: The conversation-to-tab mapping is stored in-memory only.
+   * After server restart, the mapping is lost but browser tabs persist.
+   * When the tab index is not in memory, we do best-effort cleanup by
+   * listing tabs and closing the most recently created one (highest index).
    */
   async closeTab(
     agentId: string,
