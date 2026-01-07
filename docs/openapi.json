@@ -173,8 +173,7 @@
                                       }
                                     },
                                     "required": [
-                                      "url",
-                                      "detail"
+                                      "url"
                                     ]
                                   }
                                 },
@@ -495,22 +494,62 @@
                         {
                           "type": "array",
                           "items": {
-                            "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L821",
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "enum": [
+                            "anyOf": [
+                              {
+                                "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L821",
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "text"
+                                    ]
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
                                   "text"
                                 ]
                               },
-                              "text": {
-                                "type": "string"
+                              {
+                                "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L755",
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "image_url"
+                                    ]
+                                  },
+                                  "image_url": {
+                                    "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765",
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "detail": {
+                                        "type": "string",
+                                        "enum": [
+                                          "auto",
+                                          "low",
+                                          "high"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "url"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "image_url"
+                                ]
                               }
-                            },
-                            "required": [
-                              "type",
-                              "text"
                             ]
                           }
                         }
@@ -4293,8 +4332,7 @@
                                       }
                                     },
                                     "required": [
-                                      "url",
-                                      "detail"
+                                      "url"
                                     ],
                                     "additionalProperties": false
                                   }
@@ -4631,24 +4669,66 @@
                         {
                           "type": "array",
                           "items": {
-                            "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L821",
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "enum": [
+                            "anyOf": [
+                              {
+                                "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L821",
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "text"
+                                    ]
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
                                   "text"
-                                ]
+                                ],
+                                "additionalProperties": false
                               },
-                              "text": {
-                                "type": "string"
+                              {
+                                "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L755",
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "image_url"
+                                    ]
+                                  },
+                                  "image_url": {
+                                    "description": "https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765",
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "detail": {
+                                        "type": "string",
+                                        "enum": [
+                                          "auto",
+                                          "low",
+                                          "high"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "url"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "image_url"
+                                ],
+                                "additionalProperties": false
                               }
-                            },
-                            "required": [
-                              "type",
-                              "text"
-                            ],
-                            "additionalProperties": false
+                            ]
                           }
                         }
                       ]

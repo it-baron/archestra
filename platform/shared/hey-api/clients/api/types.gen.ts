@@ -34,7 +34,7 @@ export type OpenAiChatCompletionRequestInput = {
              */
             image_url: {
                 url: string;
-                detail: 'auto' | 'low' | 'high';
+                detail?: 'auto' | 'low' | 'high';
             };
         } | {
             type: 'input_audio';
@@ -108,6 +108,15 @@ export type OpenAiChatCompletionRequestInput = {
         content: string | Array<{
             type: 'text';
             text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
         }>;
         tool_call_id: string;
     } | {
@@ -1470,7 +1479,7 @@ export type OpenAiChatCompletionRequest = {
              */
             image_url: {
                 url: string;
-                detail: 'auto' | 'low' | 'high';
+                detail?: 'auto' | 'low' | 'high';
             };
         } | {
             type: 'input_audio';
@@ -1544,6 +1553,15 @@ export type OpenAiChatCompletionRequest = {
         content: string | Array<{
             type: 'text';
             text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
         }>;
         tool_call_id: string;
     } | {
