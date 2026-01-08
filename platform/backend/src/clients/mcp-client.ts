@@ -160,21 +160,12 @@ class McpClient {
     // This ensures each user gets their own connection for dynamic credentials
     const connectionKey = `${catalogItem.id}:${targetLocalMcpServerId}`;
 
-    const transportKind = await this.getTransportKind(
-      catalogItem,
-      targetLocalMcpServerId,
-    );
-    const concurrencyLimit = this.getConcurrencyLimit(transportKind);
-
-    const executeToolCall = async (): Promise<CommonToolResult> => {
+    const executeToolCall = async (
+      getTransport: () => Promise<Transport>,
+    ): Promise<CommonToolResult> => {
       try {
         // Get the appropriate transport
-        const transport = await this.getTransportWithKind(
-          catalogItem,
-          targetLocalMcpServerId,
-          secrets,
-          transportKind,
-        );
+        const transport = await getTransport();
 
         // Get or create client
         const client = await this.getOrCreateClient(connectionKey, transport);
@@ -208,13 +199,29 @@ class McpClient {
     };
 
     if (!this.shouldLimitConcurrency()) {
-      return executeToolCall();
+      return executeToolCall(() =>
+        this.getTransport(catalogItem, targetLocalMcpServerId, secrets),
+      );
     }
+
+    const transportKind = await this.getTransportKind(
+      catalogItem,
+      targetLocalMcpServerId,
+    );
+    const concurrencyLimit = this.getConcurrencyLimit(transportKind);
 
     return this.connectionLimiter.runWithLimit(
       connectionKey,
       concurrencyLimit,
-      executeToolCall,
+      () =>
+        executeToolCall(() =>
+          this.getTransportWithKind(
+            catalogItem,
+            targetLocalMcpServerId,
+            secrets,
+            transportKind,
+          ),
+        ),
     );
   }
 
@@ -223,7 +230,7 @@ class McpClient {
    */
   private async getOrCreateClient(
     connectionKey: string,
-    transport: import("@modelcontextprotocol/sdk/shared/transport.js").Transport,
+    transport: Transport,
   ): Promise<Client> {
     // Check if we already have an active connection
     const existingClient = this.activeConnections.get(connectionKey);
