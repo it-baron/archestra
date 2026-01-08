@@ -319,7 +319,7 @@ class OpenAIRequestAdapter
       messages = this.applyUpdates(messages, this.toolResultUpdates);
     }
 
-    if (config.features.browserStreaming) {
+    if (config.features.browserStreamingEnabled) {
       messages = this.convertToolResultContent(messages);
       const sizeBeforeStrip = estimateMessagesSize(messages);
       messages = stripBrowserToolsResults(messages);

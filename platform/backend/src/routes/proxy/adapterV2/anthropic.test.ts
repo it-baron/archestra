@@ -123,8 +123,8 @@ describe("AnthropicResponseAdapter", () => {
 describe("AnthropicRequestAdapter", () => {
   describe("toProviderRequest", () => {
     test("converts MCP image blocks in tool results", () => {
-      const originalBrowserStreaming = config.features.browserStreaming;
-      config.features.browserStreaming = true;
+      const originalBrowserStreaming = config.features.browserStreamingEnabled;
+      config.features.browserStreamingEnabled = true;
       try {
         const messages = [
           {
@@ -183,13 +183,13 @@ describe("AnthropicRequestAdapter", () => {
           },
         ]);
       } finally {
-        config.features.browserStreaming = originalBrowserStreaming;
+        config.features.browserStreamingEnabled = originalBrowserStreaming;
       }
     });
 
     test("strips oversized MCP image blocks in tool results", () => {
-      const originalBrowserStreaming = config.features.browserStreaming;
-      config.features.browserStreaming = true;
+      const originalBrowserStreaming = config.features.browserStreamingEnabled;
+      config.features.browserStreamingEnabled = true;
       try {
         const largeImageData = "a".repeat(140000);
         const messages = [
@@ -242,7 +242,7 @@ describe("AnthropicRequestAdapter", () => {
           { type: "text", text: "[Image omitted due to size]" },
         ]);
       } finally {
-        config.features.browserStreaming = originalBrowserStreaming;
+        config.features.browserStreamingEnabled = originalBrowserStreaming;
       }
     });
   });

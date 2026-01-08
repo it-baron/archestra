@@ -49,7 +49,6 @@ const featuresRoutes: FastifyPluginAsyncZod = async (fastify) => {
         byosEnabled: isByosEnabled(),
         byosVaultKvVersion: getByosVaultKvVersion(),
         geminiVertexAiEnabled: isVertexAiEnabled(),
-        browserStreamingEnabled: config.features.browserStreaming,
         globalToolPolicy,
       });
     },

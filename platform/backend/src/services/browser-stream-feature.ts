@@ -38,7 +38,7 @@ class BrowserStreamFeature {
    * Check if browser streaming feature is enabled
    */
   isEnabled(): boolean {
-    return config.features.browserStreaming;
+    return config.features.browserStreamingEnabled;
   }
 
   /**

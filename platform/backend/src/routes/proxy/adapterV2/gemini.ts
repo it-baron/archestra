@@ -241,7 +241,7 @@ class GeminiRequestAdapter
       contents = geminiUtils.applyUpdates(contents, this.toolResultUpdates);
     }
 
-    if (config.features.browserStreaming) {
+    if (config.features.browserStreamingEnabled) {
       contents = this.convertToolResultContent(contents);
     }
 

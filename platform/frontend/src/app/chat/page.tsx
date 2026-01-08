@@ -316,9 +316,12 @@ export default function ChatPage() {
 
   // Get current agent info
   const currentProfileId = conversation?.agentId;
+  const browserToolsAgentId = conversationId
+    ? conversation?.agentId ?? conversation?.agent?.id
+    : initialAgentId ?? undefined;
 
   // Check if Playwright MCP is available for browser panel
-  const hasPlaywrightMcp = useHasPlaywrightMcpTools(currentProfileId);
+  const hasPlaywrightMcp = useHasPlaywrightMcpTools(browserToolsAgentId);
 
   // Check if browser streaming feature is enabled
   const isBrowserStreamingEnabled = useFeatureFlag("browserStreamingEnabled");

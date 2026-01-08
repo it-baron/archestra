@@ -410,8 +410,8 @@ describe("GeminiRequestAdapter", () => {
     });
 
     test("converts MCP image blocks in tool results", () => {
-      const originalBrowserStreaming = config.features.browserStreaming;
-      config.features.browserStreaming = true;
+      const originalBrowserStreaming = config.features.browserStreamingEnabled;
+      config.features.browserStreamingEnabled = true;
       try {
         const mcpImageResponse = [
           { type: "text", text: "Screenshot captured" },
@@ -476,13 +476,13 @@ describe("GeminiRequestAdapter", () => {
           ],
         });
       } finally {
-        config.features.browserStreaming = originalBrowserStreaming;
+        config.features.browserStreamingEnabled = originalBrowserStreaming;
       }
     });
 
     test("strips oversized MCP image blocks in tool results", () => {
-      const originalBrowserStreaming = config.features.browserStreaming;
-      config.features.browserStreaming = true;
+      const originalBrowserStreaming = config.features.browserStreamingEnabled;
+      config.features.browserStreamingEnabled = true;
       try {
         const largeImageData = "a".repeat(140000);
         const mcpImageResponse = [
@@ -540,7 +540,7 @@ describe("GeminiRequestAdapter", () => {
           text: "Screenshot captured\n[Image omitted due to size]",
         });
       } finally {
-        config.features.browserStreaming = originalBrowserStreaming;
+        config.features.browserStreamingEnabled = originalBrowserStreaming;
       }
     });
   });

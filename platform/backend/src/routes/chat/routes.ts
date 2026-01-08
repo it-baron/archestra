@@ -238,7 +238,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       // Strip images and large browser tool results from messages before sending to LLM
       // This prevents context limit issues from accumulated screenshots and page snapshots
-      const strippedMessagesForLLM = config.features.browserStreaming
+      const strippedMessagesForLLM = config.features.browserStreamingEnabled
         ? stripImagesFromMessages(messages as UiMessage[])
         : (messages as UiMessage[]);
 
@@ -342,7 +342,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
             if (messagesToSave.length > 0) {
               let messagesToStore = messagesToSave as UiMessage[];
 
-              if (config.features.browserStreaming) {
+              if (config.features.browserStreamingEnabled) {
                 // Strip base64 images and large browser tool results before storing
                 const beforeSize = estimateMessagesSize(messagesToSave);
                 messagesToStore = stripImagesFromMessages(
