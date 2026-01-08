@@ -11,16 +11,7 @@
  * - src/routes/proxy/adapterV2/
  *
  * This directory should be removed after full migration to v2 routes.
- *
- * Image format by provider (for reference):
- * - Anthropic: { type: "image", source: { type: "base64", media_type, data } }
- * - OpenAI:    { type: "image_url", image_url: { url: "data:mime;base64,..." } }
- * - Gemini:    { inlineData: { mimeType, data } }
- *
- * Shared helpers:
- * - mcp-image exports isMcpImageBlock/hasImageContent for MCP image blocks.
  */
 export * as anthropic from "./anthropic";
 export * as gemini from "./gemini";
-export * from "./mcp-image";
 export * as openai from "./openai";

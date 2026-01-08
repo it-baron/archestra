@@ -238,9 +238,9 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       // Strip images and large browser tool results from messages before sending to LLM
       // This prevents context limit issues from accumulated screenshots and page snapshots
-      const strippedMessagesForLLM = stripImagesFromMessages(
-        messages as UiMessage[],
-      );
+      const strippedMessagesForLLM = config.features.browserStreaming
+        ? stripImagesFromMessages(messages as UiMessage[])
+        : (messages as UiMessage[]);
 
       // Stream with AI SDK
       // Build streamText config conditionally
@@ -340,30 +340,34 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
             }
 
             if (messagesToSave.length > 0) {
-              // Strip base64 images and large browser tool results before storing
-              const beforeSize = estimateMessagesSize(messagesToSave);
-              const strippedMessages = stripImagesFromMessages(
-                messagesToSave as UiMessage[],
-              );
-              const afterSize = estimateMessagesSize(strippedMessages);
+              let messagesToStore = messagesToSave as UiMessage[];
 
-              logger.info(
-                {
-                  messageCount: messagesToSave.length,
-                  beforeSizeKB: Math.round(beforeSize.length / 1024),
-                  afterSizeKB: Math.round(afterSize.length / 1024),
-                  savedKB: Math.round(
-                    (beforeSize.length - afterSize.length) / 1024,
-                  ),
-                  sizeEstimateReliable:
-                    !beforeSize.isEstimated && !afterSize.isEstimated,
-                },
-                "[Chat] Stripped messages before saving to DB",
-              );
+              if (config.features.browserStreaming) {
+                // Strip base64 images and large browser tool results before storing
+                const beforeSize = estimateMessagesSize(messagesToSave);
+                messagesToStore = stripImagesFromMessages(
+                  messagesToSave as UiMessage[],
+                );
+                const afterSize = estimateMessagesSize(messagesToStore);
+
+                logger.info(
+                  {
+                    messageCount: messagesToSave.length,
+                    beforeSizeKB: Math.round(beforeSize.length / 1024),
+                    afterSizeKB: Math.round(afterSize.length / 1024),
+                    savedKB: Math.round(
+                      (beforeSize.length - afterSize.length) / 1024,
+                    ),
+                    sizeEstimateReliable:
+                      !beforeSize.isEstimated && !afterSize.isEstimated,
+                  },
+                  "[Chat] Stripped messages before saving to DB",
+                );
+              }
 
               // Append only new messages with timestamps
               const now = Date.now();
-              const messageData = strippedMessages.map((msg, index) => ({
+              const messageData = messagesToStore.map((msg, index) => ({
                 conversationId,
                 role: msg.role ?? "assistant",
                 content: msg, // Store entire UIMessage (with images stripped)

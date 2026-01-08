@@ -37,6 +37,7 @@ import {
   hasImageContent,
   isMcpImageBlock,
 } from "../utils/mcp-image";
+import { stripBrowserToolsResults } from "../utils/summarize-tool-results";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
 
@@ -317,12 +318,60 @@ class OpenAIRequestAdapter
       messages = this.applyUpdates(messages, this.toolResultUpdates);
     }
 
-    messages = this.convertToolResultContent(messages);
+    if (config.features.browserStreaming) {
+      messages = this.convertToolResultContent(messages);
+      const sizeBeforeStrip = estimateMessagesSize(messages);
+      messages = stripBrowserToolsResults(messages);
+      const sizeAfterStrip = estimateMessagesSize(messages);
+
+      if (sizeBeforeStrip.length !== sizeAfterStrip.length) {
+        logger.info(
+          {
+            sizeBeforeKB: Math.round(sizeBeforeStrip.length / 1024),
+            sizeAfterKB: Math.round(sizeAfterStrip.length / 1024),
+            savedKB: Math.round(
+              (sizeBeforeStrip.length - sizeAfterStrip.length) / 1024,
+            ),
+            sizeEstimateReliable:
+              !sizeBeforeStrip.isEstimated && !sizeAfterStrip.isEstimated,
+          },
+          "[OpenAIAdapter] Stripped browser tool results",
+        );
+      }
+    }
 
     // Calculate approximate request size for debugging
     const requestSize = estimateMessagesSize(messages);
     const requestSizeKB = Math.round(requestSize.length / 1024);
     const estimatedTokens = Math.round(requestSize.length / 4);
+    let imageCount = 0;
+    let totalImageBase64Length = 0;
+
+    for (const msg of messages) {
+      if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (
+            typeof part === "object" &&
+            part !== null &&
+            "type" in part &&
+            part.type === "image_url" &&
+            "image_url" in part &&
+            part.image_url &&
+            typeof part.image_url === "object" &&
+            "url" in part.image_url
+          ) {
+            imageCount++;
+            const imageUrl = part.image_url.url;
+            if (typeof imageUrl === "string" && imageUrl.startsWith("data:")) {
+              const base64Part = imageUrl.split(",")[1];
+              if (base64Part) {
+                totalImageBase64Length += base64Part.length;
+              }
+            }
+          }
+        }
+      }
+    }
 
     logger.info(
       {
@@ -332,6 +381,10 @@ class OpenAIRequestAdapter
         estimatedTokens,
         sizeEstimateReliable: !requestSize.isEstimated,
         hasToolResultUpdates: Object.keys(this.toolResultUpdates).length > 0,
+        imageCount,
+        totalImageBase64KB: Math.round(
+          (totalImageBase64Length * 3) / 4 / 1024,
+        ),
       },
       "[OpenAIAdapter] Building provider request",
     );

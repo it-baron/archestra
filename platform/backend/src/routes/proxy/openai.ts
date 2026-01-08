@@ -13,10 +13,6 @@ import { RouteId } from "@shared";
 import type { FastifyReply } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import OpenAIProvider from "openai";
-import type {
-  ChatCompletionCreateParamsNonStreaming,
-  ChatCompletionCreateParamsStreaming,
-} from "openai/resources/chat/completions/completions";
 import { z } from "zod";
 import config from "@/config";
 import getDefaultPricing from "@/default-model-prices";
@@ -42,11 +38,9 @@ import {
   OpenAi,
   UuidIdSchema,
 } from "@/types";
-import { estimateMessagesSize } from "@/utils/message-size";
 import { PROXY_API_PREFIX, PROXY_BODY_LIMIT } from "./common";
 import { MockOpenAIClient } from "./mock-openai-client";
 import * as utils from "./utils";
-import { stripBrowserToolsResults } from "./utils/summarize-tool-results";
 
 const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
   const API_PREFIX = `${PROXY_API_PREFIX}/openai`;
@@ -405,30 +399,6 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         toonCostSavings = stats.toonCostSavings;
       }
 
-      // Strip large browser tool results to reduce token usage
-      logger.info(
-        { messageCount: filteredMessages.length },
-        "[OpenAIProxy] About to strip browser tool results",
-      );
-      const sizeBeforeStrip = estimateMessagesSize(filteredMessages);
-      filteredMessages = stripBrowserToolsResults(filteredMessages);
-      const sizeAfterStrip = estimateMessagesSize(filteredMessages);
-
-      if (sizeBeforeStrip.length !== sizeAfterStrip.length) {
-        logger.info(
-          {
-            sizeBeforeKB: Math.round(sizeBeforeStrip.length / 1024),
-            sizeAfterKB: Math.round(sizeAfterStrip.length / 1024),
-            savedKB: Math.round(
-              (sizeBeforeStrip.length - sizeAfterStrip.length) / 1024,
-            ),
-            sizeEstimateReliable:
-              !sizeBeforeStrip.isEstimated && !sizeAfterStrip.isEstimated,
-          },
-          "[OpenAIProxy] Stripped browser tool results",
-        );
-      }
-
       fastify.log.info(
         {
           shouldApplyToonCompression,
@@ -450,54 +420,6 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         "Messages filtered after trusted data evaluation",
       );
 
-      // Log request size for debugging token issues
-      const requestSize = estimateMessagesSize(filteredMessages);
-      const requestSizeKB = Math.round(requestSize.length / 1024);
-      const estimatedTokens = Math.round(requestSize.length / 4);
-
-      // Count images in the request
-      let imageCount = 0;
-      let totalImageBase64Length = 0;
-      for (const msg of filteredMessages) {
-        if (Array.isArray(msg.content)) {
-          for (const part of msg.content) {
-            if (
-              typeof part === "object" &&
-              part !== null &&
-              "type" in part &&
-              part.type === "image_url"
-            ) {
-              imageCount++;
-              // Extract base64 length if available
-              if ("image_url" in part && part.image_url?.url) {
-                const url = part.image_url.url as string;
-                if (url.startsWith("data:")) {
-                  const base64Part = url.split(",")[1];
-                  if (base64Part) {
-                    totalImageBase64Length += base64Part.length;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      logger.info(
-        {
-          model,
-          messageCount: filteredMessages.length,
-          requestSizeKB,
-          estimatedTokens,
-          sizeEstimateReliable: !requestSize.isEstimated,
-          imageCount,
-          totalImageBase64KB: Math.round(
-            (totalImageBase64Length * 3) / 4 / 1024,
-          ),
-        },
-        "[OpenAIProxy] Request size analysis",
-      );
-
       if (stream) {
         logger.debug(
           { model, mergedToolsCount: mergedTools.length },
@@ -515,16 +437,14 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
           true,
           resolvedAgent,
           async (llmSpan) => {
-            const openaiRequest = {
+            const response = await openAiClient.chat.completions.create({
               ...body,
               model,
               messages: filteredMessages,
               tools: mergedTools.length > 0 ? mergedTools : undefined,
               stream: true,
               stream_options: { include_usage: true },
-            } as unknown as ChatCompletionCreateParamsStreaming;
-            const response =
-              await openAiClient.chat.completions.create(openaiRequest);
+            });
             llmSpan.end();
             return response;
           },
@@ -932,15 +852,13 @@ const openAiProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
           false,
           resolvedAgent,
           async (llmSpan) => {
-            const openaiRequest = {
+            const response = await openAiClient.chat.completions.create({
               ...body,
               model,
               messages: filteredMessages,
               tools: mergedTools.length > 0 ? mergedTools : undefined,
               stream: false,
-            } as unknown as ChatCompletionCreateParamsNonStreaming;
-            const response =
-              await openAiClient.chat.completions.create(openaiRequest);
+            });
             llmSpan.end();
             return response;
           },

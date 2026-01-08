@@ -241,7 +241,9 @@ class AnthropicRequestAdapter
       messages = this.applyUpdates(messages, this.toolResultUpdates);
     }
 
-    messages = this.convertToolResultContent(messages);
+    if (config.features.browserStreaming) {
+      messages = this.convertToolResultContent(messages);
+    }
 
     return {
       ...this.request,

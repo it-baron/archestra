@@ -432,12 +432,6 @@ const anthropicProxyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         "Messages filtered after trusted data evaluation",
       );
 
-      // Always convert MCP images to Anthropic format (regardless of TOON setting)
-      filteredMessages =
-        utils.adapters.anthropic.convertMcpImagesToAnthropicFormat(
-          filteredMessages,
-        );
-
       // Determine if TOON compression should be applied
       let toonTokensBefore: number | null = null;
       let toonTokensAfter: number | null = null;
