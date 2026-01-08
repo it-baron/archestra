@@ -212,6 +212,103 @@ describe("BrowserStreamService URL handling", () => {
     expect(result).toBe("https://current.example.com");
   });
 
+  test("getCurrentUrl reads current tab URL from numeric current flag", async () => {
+    const browserService = new BrowserStreamService();
+    const agentId = "test-agent";
+    const userContext = { userId: "test-user", userIsProfileAdmin: false };
+
+    vi.spyOn(
+      browserService as unknown as {
+        findTabsTool: () => Promise<string | null>;
+      },
+      "findTabsTool",
+    ).mockResolvedValue("browser_tabs");
+
+    const callTool = vi.fn().mockResolvedValue({
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify([
+            {
+              index: 0,
+              title: "Home",
+              url: "https://home.example.com",
+              current: 0,
+            },
+            {
+              index: 3,
+              title: "Current",
+              url: "https://numeric-current.example.com",
+              current: 1,
+            },
+          ]),
+        },
+      ],
+    });
+
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue({
+      callTool,
+    } as never);
+
+    const result = await browserService.getCurrentUrl(agentId, userContext);
+
+    expect(callTool).toHaveBeenCalledWith({
+      name: "browser_tabs",
+      arguments: { action: "list" },
+    });
+    expect(result).toBe("https://numeric-current.example.com");
+  });
+
+  test("getCurrentUrl reads current tab URL from top-level currentIndex", async () => {
+    const browserService = new BrowserStreamService();
+    const agentId = "test-agent";
+    const userContext = { userId: "test-user", userIsProfileAdmin: false };
+
+    vi.spyOn(
+      browserService as unknown as {
+        findTabsTool: () => Promise<string | null>;
+      },
+      "findTabsTool",
+    ).mockResolvedValue("browser_tabs");
+
+    const callTool = vi.fn().mockResolvedValue({
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            currentIndex: 2,
+            tabs: [
+              {
+                index: 1,
+                title: "One",
+                url: "https://one.example.com",
+              },
+              {
+                index: 2,
+                title: "Two",
+                url: "https://current-index.example.com",
+              },
+            ],
+          }),
+        },
+      ],
+    });
+
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue({
+      callTool,
+    } as never);
+
+    const result = await browserService.getCurrentUrl(agentId, userContext);
+
+    expect(callTool).toHaveBeenCalledWith({
+      name: "browser_tabs",
+      arguments: { action: "list" },
+    });
+    expect(result).toBe("https://current-index.example.com");
+  });
+
   test("selectOrCreateTab uses MCP-provided tab indices", async () => {
     const browserService = new BrowserStreamService();
     const agentId = "test-agent";

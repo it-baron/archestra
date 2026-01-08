@@ -960,30 +960,112 @@ export class BrowserStreamService {
   ): string | undefined {
     if (textContent.trim() === "") return undefined;
 
-    try {
-      const parsed: unknown = JSON.parse(textContent);
-      if (!Array.isArray(parsed)) {
-        return undefined;
+    const parseTabIndex = (value: unknown): number | null => {
+      if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isNaN(parsed) && parsed >= 0) {
+          return parsed;
+        }
+      }
+      return null;
+    };
+
+    const isCurrentTabFlag = (
+      flag: unknown,
+      candidateIndex: number | null,
+    ): boolean => {
+      if (flag === true) return true;
+      if (typeof flag === "string") {
+        const normalized = flag.trim().toLowerCase();
+        if (normalized === "true") return true;
+        const numericFlag = parseTabIndex(flag);
+        if (numericFlag === 1) return true;
+        if (numericFlag === 0) return false;
+        if (numericFlag !== null && candidateIndex !== null) {
+          return numericFlag === candidateIndex;
+        }
+      }
+      if (typeof flag === "number") {
+        if (flag === 1) return true;
+        if (flag === 0) return false;
+        if (candidateIndex !== null) {
+          return flag === candidateIndex;
+        }
+      }
+      return false;
+    };
+
+    const findCurrentUrlInTabs = (
+      tabs: unknown[],
+      currentIndex: number | null,
+    ): string | undefined => {
+      if (currentIndex !== null) {
+        for (const item of tabs) {
+          if (typeof item !== "object" || item === null) continue;
+          const candidate = item as Record<string, unknown>;
+          const candidateIndex = parseTabIndex(
+            candidate.index ?? candidate.id ?? candidate.tabIndex,
+          );
+          if (candidateIndex !== null && candidateIndex === currentIndex) {
+            if (typeof candidate.url === "string") {
+              return candidate.url;
+            }
+          }
+        }
+
+        if (currentIndex >= 0 && currentIndex < tabs.length) {
+          const fallback = tabs[currentIndex];
+          if (typeof fallback === "object" && fallback !== null) {
+            const candidate = fallback as Record<string, unknown>;
+            if (typeof candidate.url === "string") {
+              return candidate.url;
+            }
+          }
+        }
       }
 
-      for (const item of parsed) {
+      for (const item of tabs) {
         if (typeof item !== "object" || item === null) continue;
         const candidate = item as Record<string, unknown>;
-        const url =
-          typeof candidate.url === "string" ? candidate.url : undefined;
+        if (typeof candidate.url !== "string") continue;
+        const candidateIndex = parseTabIndex(
+          candidate.index ?? candidate.id ?? candidate.tabIndex,
+        );
         const currentFlag =
           candidate.current ??
           candidate.isCurrent ??
-          candidate["is_current"] ??
+          candidate.is_current ??
           candidate.active ??
           candidate.selected;
-        const isCurrent =
-          currentFlag === true ||
-          (typeof currentFlag === "string" &&
-            currentFlag.toLowerCase() === "true");
+        if (isCurrentTabFlag(currentFlag, candidateIndex)) {
+          return candidate.url;
+        }
+      }
 
-        if (isCurrent && url) {
-          return url;
+      return undefined;
+    };
+
+    try {
+      const parsed: unknown = JSON.parse(textContent);
+      if (Array.isArray(parsed)) {
+        return findCurrentUrlInTabs(parsed, null);
+      }
+
+      if (typeof parsed === "object" && parsed !== null) {
+        const candidate = parsed as Record<string, unknown>;
+        const currentIndex = parseTabIndex(
+          candidate.currentIndex ??
+            candidate.current_index ??
+            candidate.selectedIndex ??
+            candidate.selected_index,
+        );
+        const tabs = candidate.tabs;
+
+        if (Array.isArray(tabs)) {
+          return findCurrentUrlInTabs(tabs, currentIndex);
         }
       }
     } catch {
