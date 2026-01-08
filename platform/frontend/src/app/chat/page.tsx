@@ -317,8 +317,8 @@ export default function ChatPage() {
   // Get current agent info
   const currentProfileId = conversation?.agentId;
   const browserToolsAgentId = conversationId
-    ? conversation?.agentId ?? conversation?.agent?.id
-    : initialAgentId ?? undefined;
+    ? (conversation?.agentId ?? conversation?.agent?.id)
+    : (initialAgentId ?? undefined);
 
   // Check if Playwright MCP is available for browser panel
   const hasPlaywrightMcp = useHasPlaywrightMcpTools(browserToolsAgentId);
