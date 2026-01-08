@@ -164,6 +164,54 @@ describe("BrowserStreamService URL handling", () => {
     expect(getCurrentUrlSpy).not.toHaveBeenCalled();
   });
 
+  test("getCurrentUrl reads current tab URL from JSON tabs list", async () => {
+    const browserService = new BrowserStreamService();
+    const agentId = "test-agent";
+    const userContext = { userId: "test-user", userIsProfileAdmin: false };
+
+    vi.spyOn(
+      browserService as unknown as {
+        findTabsTool: () => Promise<string | null>;
+      },
+      "findTabsTool",
+    ).mockResolvedValue("browser_tabs");
+
+    const callTool = vi.fn().mockResolvedValue({
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify([
+            {
+              index: 0,
+              title: "Home",
+              url: "https://home.example.com",
+              current: false,
+            },
+            {
+              index: 1,
+              title: "Current",
+              url: "https://current.example.com",
+              current: true,
+            },
+          ]),
+        },
+      ],
+    });
+
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue({
+      callTool,
+    } as never);
+
+    const result = await browserService.getCurrentUrl(agentId, userContext);
+
+    expect(callTool).toHaveBeenCalledWith({
+      name: "browser_tabs",
+      arguments: { action: "list" },
+    });
+    expect(result).toBe("https://current.example.com");
+  });
+
   test("selectOrCreateTab uses MCP-provided tab indices", async () => {
     const browserService = new BrowserStreamService();
     const agentId = "test-agent";

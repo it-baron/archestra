@@ -955,6 +955,44 @@ export class BrowserStreamService {
    * Get current page URL using browser_tabs
    * Parses the current tab's URL from the tabs list
    */
+  private extractCurrentUrlFromTabsJson(
+    textContent: string,
+  ): string | undefined {
+    if (textContent.trim() === "") return undefined;
+
+    try {
+      const parsed: unknown = JSON.parse(textContent);
+      if (!Array.isArray(parsed)) {
+        return undefined;
+      }
+
+      for (const item of parsed) {
+        if (typeof item !== "object" || item === null) continue;
+        const candidate = item as Record<string, unknown>;
+        const url =
+          typeof candidate.url === "string" ? candidate.url : undefined;
+        const currentFlag =
+          candidate.current ??
+          candidate.isCurrent ??
+          candidate["is_current"] ??
+          candidate.active ??
+          candidate.selected;
+        const isCurrent =
+          currentFlag === true ||
+          (typeof currentFlag === "string" &&
+            currentFlag.toLowerCase() === "true");
+
+        if (isCurrent && url) {
+          return url;
+        }
+      }
+    } catch {
+      return undefined;
+    }
+
+    return undefined;
+  }
+
   async getCurrentUrl(
     agentId: string,
     userContext: BrowserUserContext,
@@ -984,6 +1022,11 @@ export class BrowserStreamService {
       }
 
       const textContent = this.extractTextContent(result.content);
+      const currentUrlFromJson =
+        this.extractCurrentUrlFromTabsJson(textContent);
+      if (currentUrlFromJson) {
+        return currentUrlFromJson;
+      }
       // Parse the current tab's URL from format like:
       // "- 1: (current) [Title] (https://example.com)"
       const currentTabMatch = textContent.match(
