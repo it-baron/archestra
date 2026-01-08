@@ -359,12 +359,35 @@ export class BrowserStreamService {
         arguments: { action: "list" },
       });
 
-      const resolvedTabIndex = postCreateList.isError
-        ? expectedNewTabIndex
-        : Math.max(
-            expectedNewTabIndex,
-            this.getMaxTabIndex(this.parseTabsList(postCreateList.content)),
+      const postCreateTabs = postCreateList.isError
+        ? []
+        : this.parseTabsList(postCreateList.content);
+      const existingIndexSet = new Set(existingTabs.map((tab) => tab.index));
+
+      let resolvedTabIndex: number | null = null;
+      if (!postCreateList.isError) {
+        const newIndices = postCreateTabs
+          .map((tab) => tab.index)
+          .filter(
+            (index) => Number.isInteger(index) && !existingIndexSet.has(index),
           );
+        const uniqueNewIndices = Array.from(new Set(newIndices));
+
+        if (uniqueNewIndices.length === 1) {
+          resolvedTabIndex = uniqueNewIndices[0];
+        } else if (uniqueNewIndices.length > 1) {
+          resolvedTabIndex = uniqueNewIndices.includes(expectedNewTabIndex)
+            ? expectedNewTabIndex
+            : Math.max(...uniqueNewIndices);
+        }
+      }
+
+      if (resolvedTabIndex === null) {
+        resolvedTabIndex =
+          postCreateTabs.length > 0
+            ? this.getMaxTabIndex(postCreateTabs)
+            : expectedNewTabIndex;
+      }
 
       const selectNewResult = await client.callTool({
         name: tabsTool,
