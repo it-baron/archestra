@@ -13,7 +13,7 @@ vi.mock("@/config", async (importOriginal) => {
       ...actual.default,
       features: {
         ...actual.default.features,
-        browserStreaming: true,
+        browserStreamingEnabled: true,
       },
     },
   };

@@ -18,7 +18,7 @@ vi.mock("@/config", async (importOriginal) => {
       ...actual.default,
       features: {
         ...actual.default.features,
-        browserStreaming: true, // Feature is enabled for these tests
+        browserStreamingEnabled: true, // Feature is enabled for these tests
       },
     },
   };
