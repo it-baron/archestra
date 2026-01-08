@@ -383,9 +383,7 @@ class OpenAIRequestAdapter
         sizeEstimateReliable: !requestSize.isEstimated,
         hasToolResultUpdates: Object.keys(this.toolResultUpdates).length > 0,
         imageCount,
-        totalImageBase64KB: Math.round(
-          (totalImageBase64Length * 3) / 4 / 1024,
-        ),
+        totalImageBase64KB: Math.round((totalImageBase64Length * 3) / 4 / 1024),
       },
       "[OpenAIAdapter] Building provider request",
     );

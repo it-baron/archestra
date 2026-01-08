@@ -77,8 +77,10 @@ class ConnectionLimiter {
       return fn();
     }
 
-    const state =
-      this.states.get(connectionKey) ?? { activeCount: 0, queue: [] };
+    const state = this.states.get(connectionKey) ?? {
+      activeCount: 0,
+      queue: [],
+    };
     this.states.set(connectionKey, state);
 
     return new Promise<T>((resolve, reject) => {
@@ -593,8 +595,9 @@ class McpClient {
       return "http";
     }
 
-    const usesStreamableHttp =
-      await McpServerRuntimeManager.usesStreamableHttp(targetLocalMcpServerId);
+    const usesStreamableHttp = await McpServerRuntimeManager.usesStreamableHttp(
+      targetLocalMcpServerId,
+    );
     return usesStreamableHttp ? "http" : "stdio";
   }
 
