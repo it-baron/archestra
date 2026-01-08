@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import config from "@/config";
 import logger from "@/logging";
@@ -595,7 +596,7 @@ class McpClient {
     targetLocalMcpServerId: string,
     secrets: Record<string, unknown>,
     transportKind: TransportKind,
-  ): Promise<import("@modelcontextprotocol/sdk/shared/transport.js").Transport> {
+  ): Promise<Transport> {
     if (transportKind === "http") {
       if (catalogItem.serverType === "local") {
         const url = McpServerRuntimeManager.getHttpEndpointUrl(
@@ -664,9 +665,7 @@ class McpClient {
     catalogItem: InternalMcpCatalog,
     targetLocalMcpServerId: string,
     secrets: Record<string, unknown>,
-  ): Promise<
-    import("@modelcontextprotocol/sdk/shared/transport.js").Transport
-  > {
+  ): Promise<Transport> {
     const transportKind = await this.getTransportKind(
       catalogItem,
       targetLocalMcpServerId,
