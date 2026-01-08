@@ -23,7 +23,11 @@ import type {
   UsageView,
 } from "@/types";
 import { MockAnthropicClient } from "../mock-anthropic-client";
-import { hasImageContent, isMcpImageBlock } from "../utils/mcp-image";
+import {
+  hasImageContent,
+  isImageTooLarge,
+  isMcpImageBlock,
+} from "../utils/mcp-image";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
 
@@ -467,12 +471,20 @@ function convertMcpImageBlocksToAnthropic(
   }
 
   const convertedContent: AnthropicToolResultContentBlock[] = [];
+  const imageTooLargePlaceholder = "[Image omitted due to size]";
 
   for (const item of content) {
     if (typeof item !== "object" || item === null) continue;
     const candidate = item as Record<string, unknown>;
 
     if (isMcpImageBlock(item)) {
+      if (isImageTooLarge(item)) {
+        convertedContent.push({
+          type: "text",
+          text: imageTooLargePlaceholder,
+        });
+        continue;
+      }
       const mimeType = item.mimeType ?? "image/png";
       convertedContent.push({
         type: "image",

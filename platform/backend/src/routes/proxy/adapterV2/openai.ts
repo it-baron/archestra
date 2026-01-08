@@ -35,6 +35,7 @@ import { MockOpenAIClient } from "../mock-openai-client";
 import {
   doesModelSupportImages,
   hasImageContent,
+  isImageTooLarge,
   isMcpImageBlock,
 } from "../utils/mcp-image";
 import { stripBrowserToolsResults } from "../utils/summarize-tool-results";
@@ -530,6 +531,7 @@ function convertMcpImageBlocksToOpenAi(
   }
 
   const openAiContent: OpenAiToolResultContentBlock[] = [];
+  const imageTooLargePlaceholder = "[Image omitted due to size]";
 
   for (const item of content) {
     if (typeof item !== "object" || item === null) continue;
@@ -539,6 +541,23 @@ function convertMcpImageBlocksToOpenAi(
       const mimeType = item.mimeType ?? "image/png";
       const base64Length = typeof item.data === "string" ? item.data.length : 0;
       const estimatedSizeKB = Math.round((base64Length * 3) / 4 / 1024);
+      const shouldStripImage = isImageTooLarge(item);
+
+      if (shouldStripImage) {
+        logger.info(
+          {
+            mimeType,
+            base64Length,
+            estimatedSizeKB,
+          },
+          "[OpenAIAdapter] Stripping MCP image block due to size limit",
+        );
+        openAiContent.push({
+          type: "text",
+          text: imageTooLargePlaceholder,
+        });
+        continue;
+      }
 
       logger.info(
         {

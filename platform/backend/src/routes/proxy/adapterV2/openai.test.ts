@@ -1,3 +1,4 @@
+import config from "@/config";
 import { describe, expect, test } from "@/test";
 import type { OpenAi } from "@/types";
 import { openaiAdapterFactory } from "./openai";
@@ -443,52 +444,109 @@ describe("OpenAIRequestAdapter", () => {
     });
 
     test("converts MCP image blocks in tool results", () => {
-      const messages = [
-        { role: "user", content: "Capture a screenshot" },
-        {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "call_123",
-              type: "function",
-              function: {
-                name: "browser_take_screenshot",
-                arguments: "{}",
+      const originalBrowserStreaming = config.features.browserStreaming;
+      config.features.browserStreaming = true;
+      try {
+        const messages = [
+          { role: "user", content: "Capture a screenshot" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_123",
+                type: "function",
+                function: {
+                  name: "browser_take_screenshot",
+                  arguments: "{}",
+                },
               },
-            },
-          ],
-        },
-        {
-          role: "tool",
-          tool_call_id: "call_123",
-          content: [
-            { type: "text", text: "Screenshot captured" },
-            {
-              type: "image",
-              data: "abc123",
-              mimeType: "image/png",
-            },
-          ],
-        },
-      ] as unknown as OpenAi.Types.ChatCompletionsRequest["messages"];
-
-      const request = createMockRequest(messages);
-      const adapter = openaiAdapterFactory.createRequestAdapter(request);
-      const result = adapter.toProviderRequest();
-
-      const toolMessage = result.messages.find(
-        (message) => message.role === "tool",
-      );
-      expect(toolMessage?.content).toEqual([
-        { type: "text", text: "Screenshot captured" },
-        {
-          type: "image_url",
-          image_url: {
-            url: "data:image/png;base64,abc123",
+            ],
           },
-        },
-      ]);
+          {
+            role: "tool",
+            tool_call_id: "call_123",
+            content: [
+              { type: "text", text: "Screenshot captured" },
+              {
+                type: "image",
+                data: "abc123",
+                mimeType: "image/png",
+              },
+            ],
+          },
+        ] as unknown as OpenAi.Types.ChatCompletionsRequest["messages"];
+
+        const request = createMockRequest(messages);
+        const adapter = openaiAdapterFactory.createRequestAdapter(request);
+        const result = adapter.toProviderRequest();
+
+        const toolMessage = result.messages.find(
+          (message) => message.role === "tool",
+        );
+        expect(toolMessage?.content).toEqual([
+          { type: "text", text: "Screenshot captured" },
+          {
+            type: "image_url",
+            image_url: {
+              url: "data:image/png;base64,abc123",
+            },
+          },
+        ]);
+      } finally {
+        config.features.browserStreaming = originalBrowserStreaming;
+      }
+    });
+
+    test("strips oversized MCP image blocks in tool results", () => {
+      const originalBrowserStreaming = config.features.browserStreaming;
+      config.features.browserStreaming = true;
+      try {
+        const largeImageData = "a".repeat(140000);
+        const messages = [
+          { role: "user", content: "Capture a screenshot" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_123",
+                type: "function",
+                function: {
+                  name: "browser_take_screenshot",
+                  arguments: "{}",
+                },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "call_123",
+            content: [
+              { type: "text", text: "Screenshot captured" },
+              {
+                type: "image",
+                data: largeImageData,
+                mimeType: "image/png",
+              },
+            ],
+          },
+        ] as unknown as OpenAi.Types.ChatCompletionsRequest["messages"];
+
+        const request = createMockRequest(messages);
+        const adapter = openaiAdapterFactory.createRequestAdapter(request);
+        const result = adapter.toProviderRequest();
+
+        const toolMessage = result.messages.find(
+          (message) => message.role === "tool",
+        );
+        expect(toolMessage?.content).toEqual([
+          { type: "text", text: "Screenshot captured" },
+          { type: "text", text: "[Image omitted due to size]" },
+        ]);
+      } finally {
+        config.features.browserStreaming = originalBrowserStreaming;
+      }
     });
   });
 });

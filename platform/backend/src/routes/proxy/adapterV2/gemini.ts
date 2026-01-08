@@ -29,7 +29,11 @@ import type {
 import { MockGeminiClient } from "../mock-gemini-client";
 import * as geminiUtils from "../utils/adapters/gemini";
 import { createGoogleGenAIClient } from "../utils/gemini-client";
-import { hasImageContent, isMcpImageBlock } from "../utils/mcp-image";
+import {
+  hasImageContent,
+  isImageTooLarge,
+  isMcpImageBlock,
+} from "../utils/mcp-image";
 import type { CompressionStats } from "../utils/toon-conversion";
 import { unwrapToolContent } from "../utils/unwrap-tool-content";
 
@@ -279,12 +283,17 @@ function convertMcpImageBlocksToGeminiResponse(
 
   const textParts: string[] = [];
   const imageParts: Array<{ mimeType: string; data: string }> = [];
+  const imageTooLargePlaceholder = "[Image omitted due to size]";
 
   for (const item of content) {
     if (typeof item !== "object" || item === null) continue;
     const candidate = item as Record<string, unknown>;
 
     if (isMcpImageBlock(item)) {
+      if (isImageTooLarge(item)) {
+        textParts.push(imageTooLargePlaceholder);
+        continue;
+      }
       const mimeType = item.mimeType ?? "image/png";
       imageParts.push({
         mimeType,
@@ -299,19 +308,24 @@ function convertMcpImageBlocksToGeminiResponse(
     }
   }
 
-  if (imageParts.length === 0) {
+  if (imageParts.length === 0 && textParts.length === 0) {
     return null;
   }
 
-  return {
+  const response: Record<string, unknown> = {
     text: textParts.join("\n"),
-    images: imageParts.map((img) => ({
+  };
+
+  if (imageParts.length > 0) {
+    response.images = imageParts.map((img) => ({
       inlineData: {
         mimeType: img.mimeType,
         data: img.data,
       },
-    })),
-  };
+    }));
+  }
+
+  return response;
 }
 
 // =============================================================================
