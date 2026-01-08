@@ -459,7 +459,8 @@ describe("McpClient", () => {
 
     describe("Concurrency limiter", () => {
       test("bypasses limiter when browser streaming is disabled", async () => {
-        const originalBrowserStreaming = config.features.browserStreamingEnabled;
+        const originalBrowserStreaming =
+          config.features.browserStreamingEnabled;
         config.features.browserStreamingEnabled = false;
 
         const clientWithInternals = mcpClient as unknown as {
@@ -532,7 +533,8 @@ describe("McpClient", () => {
       });
 
       test("limits HTTP concurrency to 4 when browser streaming is enabled", async () => {
-        const originalBrowserStreaming = config.features.browserStreamingEnabled;
+        const originalBrowserStreaming =
+          config.features.browserStreamingEnabled;
         config.features.browserStreamingEnabled = true;
 
         const clientWithInternals = mcpClient as unknown as {
@@ -849,7 +851,8 @@ describe("McpClient", () => {
       });
 
       test("limits stdio concurrency to 1 when browser streaming is enabled", async () => {
-        const originalBrowserStreaming = config.features.browserStreamingEnabled;
+        const originalBrowserStreaming =
+          config.features.browserStreamingEnabled;
         config.features.browserStreamingEnabled = true;
 
         const clientWithInternals = mcpClient as unknown as {

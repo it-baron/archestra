@@ -724,6 +724,19 @@ export class BrowserStreamService {
 
       conversationTabMap.delete(tabKey);
 
+      // Update indices for all conversations with higher tab indices
+      // When a tab is closed, all tabs with higher indices shift down by one
+      const closedIndex = tabIndex;
+      for (const [key, index] of conversationTabMap.entries()) {
+        if (index > closedIndex) {
+          conversationTabMap.set(key, index - 1);
+          logger.debug(
+            { key, oldIndex: index, newIndex: index - 1 },
+            "Shifted tab index after tab close",
+          );
+        }
+      }
+
       return { success: true };
     } catch (error) {
       logger.error({ error, agentId, conversationId }, "Failed to close tab");
