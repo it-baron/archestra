@@ -26,7 +26,7 @@ vi.mock("@/config", async (importOriginal) => {
 
 // Import routes AFTER mocking config (dynamic import needed because of the mock)
 const { default: browserStreamRoutes } = await import("./browser-stream");
-const { default: chatRoutes } = await import("./chat/routes");
+const { default: chatRoutes } = await import("./chat/routes.chat");
 
 const buildAppWithUser = async (user: User, organizationId: string) => {
   const app = Fastify({ logger: false })
