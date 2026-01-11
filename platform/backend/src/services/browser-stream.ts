@@ -724,11 +724,15 @@ export class BrowserStreamService {
 
       conversationTabMap.delete(tabKey);
 
-      // Update indices for all conversations with higher tab indices
-      // When a tab is closed, all tabs with higher indices shift down by one
+      // Update indices for conversations in the SAME agent+user browser context
+      // that have higher tab indices. When a tab is closed, tabs with higher
+      // indices shift down by one, but only within the same browser context.
       const closedIndex = tabIndex;
+      const agentUserPrefix = toAgentUserKey(agentId, userContext.userId);
       for (const [key, index] of conversationTabMap.entries()) {
-        if (index > closedIndex) {
+        // Only shift indices for the same agent+user combination
+        // (each agent+user pair has their own browser context)
+        if (key.startsWith(agentUserPrefix) && index > closedIndex) {
           conversationTabMap.set(key, index - 1);
           logger.debug(
             { key, oldIndex: index, newIndex: index - 1 },
