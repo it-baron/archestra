@@ -297,6 +297,15 @@ export class BrowserStreamService {
           });
 
           if (!selectExistingResult.isError) {
+            logger.info(
+              {
+                agentId,
+                conversationId,
+                tabIndex: existingTabIndex,
+                action: "switch_to_existing_tab",
+              },
+              "[BrowserTabs] Switched to existing tab for conversation",
+            );
             return { success: true, tabIndex: existingTabIndex };
           }
 
@@ -400,6 +409,18 @@ export class BrowserStreamService {
       }
 
       conversationTabMap.set(tabKey, resolvedTabIndex);
+      logger.info(
+        {
+          agentId,
+          conversationId,
+          tabIndex: resolvedTabIndex,
+          action: "created_new_tab",
+          allMappings: Array.from(conversationTabMap.entries()).map(
+            ([k, v]) => ({ key: k, index: v }),
+          ),
+        },
+        "[BrowserTabs] Created new tab for conversation",
+      );
       return { success: true, tabIndex: resolvedTabIndex };
     } catch (error) {
       const errorMessage =
@@ -713,8 +734,26 @@ export class BrowserStreamService {
     }
 
     if (tabIndex === undefined || tabIndex === 0) {
+      logger.info(
+        { agentId, conversationId, tabIndex },
+        "[BrowserTabs] No tab to close (undefined or tab 0)",
+      );
       return { success: true }; // No tab to close or can't close tab 0
     }
+
+    // Log state before closing
+    const mappingsBeforeClose = Array.from(conversationTabMap.entries()).map(
+      ([k, v]) => ({ key: k, index: v }),
+    );
+    logger.info(
+      {
+        agentId,
+        conversationId,
+        closingTabIndex: tabIndex,
+        mappingsBeforeClose,
+      },
+      "[BrowserTabs] Closing tab - state before",
+    );
 
     try {
       await client.callTool({
@@ -729,6 +768,20 @@ export class BrowserStreamService {
         userId: userContext.userId,
         closedIndex: tabIndex,
       });
+
+      // Log state after closing
+      const mappingsAfterClose = Array.from(conversationTabMap.entries()).map(
+        ([k, v]) => ({ key: k, index: v }),
+      );
+      logger.info(
+        {
+          agentId,
+          conversationId,
+          closedTabIndex: tabIndex,
+          mappingsAfterClose,
+        },
+        "[BrowserTabs] Closed tab - state after",
+      );
 
       return { success: true };
     } catch (error) {
@@ -753,9 +806,9 @@ export class BrowserStreamService {
 
       if (index > closedIndex) {
         conversationTabMap.set(key, index - 1);
-        logger.debug(
-          { key, oldIndex: index, newIndex: index - 1 },
-          "Shifted tab index after tab close",
+        logger.info(
+          { key, oldIndex: index, newIndex: index - 1, closedIndex },
+          "[BrowserTabs] Shifted tab index after tab close",
         );
       }
     }
@@ -794,6 +847,16 @@ export class BrowserStreamService {
         this.extractCurrentTabIndexFromTabsContent(toolResultContent);
       if (currentIndex !== undefined) {
         conversationTabMap.set(tabKey, currentIndex);
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            action,
+            previousIndex: existingIndex,
+            newIndex: currentIndex,
+          },
+          "[BrowserTabs] Synced tab mapping from AI tool call (new/list)",
+        );
       }
       return;
     }
@@ -802,6 +865,16 @@ export class BrowserStreamService {
       const selectedIndex = this.parseTabIndexValue(toolArguments?.index);
       if (selectedIndex !== null) {
         conversationTabMap.set(tabKey, selectedIndex);
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            action,
+            previousIndex: existingIndex,
+            selectedIndex,
+          },
+          "[BrowserTabs] Synced tab mapping from AI tool call (select by arg)",
+        );
         return;
       }
 
@@ -809,6 +882,16 @@ export class BrowserStreamService {
         this.extractCurrentTabIndexFromTabsContent(toolResultContent);
       if (currentIndex !== undefined) {
         conversationTabMap.set(tabKey, currentIndex);
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            action,
+            previousIndex: existingIndex,
+            currentIndex,
+          },
+          "[BrowserTabs] Synced tab mapping from AI tool call (select by result)",
+        );
       }
       return;
     }
@@ -816,6 +899,20 @@ export class BrowserStreamService {
     if (action === "close") {
       const closedIndex =
         this.parseTabIndexValue(toolArguments?.index) ?? existingIndex ?? null;
+
+      logger.info(
+        {
+          agentId,
+          conversationId,
+          action,
+          closedIndex,
+          existingIndex,
+          mappingsBefore: Array.from(conversationTabMap.entries()).map(
+            ([k, v]) => ({ key: k, index: v }),
+          ),
+        },
+        "[BrowserTabs] Processing AI close action - before shift",
+      );
 
       if (closedIndex !== null) {
         this.shiftTabIndicesAfterClose({
@@ -829,11 +926,36 @@ export class BrowserStreamService {
         this.extractCurrentTabIndexFromTabsContent(toolResultContent);
       if (currentIndex !== undefined) {
         conversationTabMap.set(tabKey, currentIndex);
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            action,
+            closedIndex,
+            newCurrentIndex: currentIndex,
+            mappingsAfter: Array.from(conversationTabMap.entries()).map(
+              ([k, v]) => ({ key: k, index: v }),
+            ),
+          },
+          "[BrowserTabs] Synced tab mapping from AI tool call (close) - new current",
+        );
         return;
       }
 
       if (closedIndex !== null && existingIndex === closedIndex) {
         conversationTabMap.delete(tabKey);
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            action,
+            closedIndex,
+            mappingsAfter: Array.from(conversationTabMap.entries()).map(
+              ([k, v]) => ({ key: k, index: v }),
+            ),
+          },
+          "[BrowserTabs] Synced tab mapping from AI tool call (close) - deleted mapping",
+        );
       }
     }
   }
