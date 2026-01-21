@@ -724,24 +724,112 @@ export class BrowserStreamService {
 
       conversationTabMap.delete(tabKey);
 
-      // Update indices for all conversations with higher tab indices
-      // When a tab is closed, all tabs with higher indices shift down by one
-      const closedIndex = tabIndex;
-      for (const [key, index] of conversationTabMap.entries()) {
-        if (index > closedIndex) {
-          conversationTabMap.set(key, index - 1);
-          logger.debug(
-            { key, oldIndex: index, newIndex: index - 1 },
-            "Shifted tab index after tab close",
-          );
-        }
-      }
+      this.shiftTabIndicesAfterClose({
+        agentId,
+        userId: userContext.userId,
+        closedIndex: tabIndex,
+      });
 
       return { success: true };
     } catch (error) {
       logger.error({ error, agentId, conversationId }, "Failed to close tab");
       conversationTabMap.delete(tabKey);
       return { success: true }; // Consider success even if close fails
+    }
+  }
+
+  private shiftTabIndicesAfterClose(params: {
+    agentId: string;
+    userId: string;
+    closedIndex: number;
+  }): void {
+    const { agentId, userId, closedIndex } = params;
+    const prefix = `${agentId}:${userId}:`;
+
+    for (const [key, index] of conversationTabMap.entries()) {
+      if (!key.startsWith(prefix)) {
+        continue;
+      }
+
+      if (index > closedIndex) {
+        conversationTabMap.set(key, index - 1);
+        logger.debug(
+          { key, oldIndex: index, newIndex: index - 1 },
+          "Shifted tab index after tab close",
+        );
+      }
+    }
+  }
+
+  async syncTabMappingFromTabsToolCall(params: {
+    agentId: string;
+    conversationId: string;
+    userContext: BrowserUserContext;
+    toolArguments?: Record<string, unknown>;
+    toolResultContent: unknown;
+  }): Promise<void> {
+    const {
+      agentId,
+      conversationId,
+      userContext,
+      toolArguments,
+      toolResultContent,
+    } = params;
+
+    const actionValue = toolArguments?.action;
+    if (typeof actionValue !== "string") {
+      return;
+    }
+
+    const action = actionValue.trim().toLowerCase();
+    const tabKey = toConversationTabKey(
+      agentId,
+      userContext.userId,
+      conversationId,
+    );
+    const existingIndex = conversationTabMap.get(tabKey);
+
+    if (action === "new" || action === "list") {
+      const currentIndex =
+        this.extractCurrentTabIndexFromTabsContent(toolResultContent);
+      if (currentIndex !== undefined) {
+        conversationTabMap.set(tabKey, currentIndex);
+      }
+      return;
+    }
+
+    if (action === "select") {
+      const selectedIndex = this.parseTabIndexValue(toolArguments?.index);
+      if (selectedIndex !== null) {
+        conversationTabMap.set(tabKey, selectedIndex);
+      }
+      return;
+    }
+
+    if (action === "close") {
+      const closedIndex =
+        this.parseTabIndexValue(toolArguments?.index) ?? existingIndex ?? null;
+      if (closedIndex === null) {
+        return;
+      }
+
+      this.shiftTabIndicesAfterClose({
+        agentId,
+        userId: userContext.userId,
+        closedIndex,
+      });
+
+      if (existingIndex === closedIndex) {
+        const currentIndex = await this.getCurrentTabIndex(
+          agentId,
+          userContext,
+        );
+        if (currentIndex !== undefined) {
+          conversationTabMap.set(tabKey, currentIndex);
+        } else {
+          conversationTabMap.delete(tabKey);
+        }
+      }
     }
   }
 
