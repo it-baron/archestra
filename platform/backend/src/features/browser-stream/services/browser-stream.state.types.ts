@@ -60,3 +60,22 @@ export type BrowserStateError =
   | { kind: "NoBackHistory"; tabId: BrowserTabId }
   | { kind: "NoForwardHistory"; tabId: BrowserTabId }
   | { kind: "TabIndexUnavailable"; tabId: BrowserTabId };
+
+/**
+ * Persisted (database-safe) tab state - no runtime-only fields like index
+ */
+export type PersistedBrowserTabState = {
+  current: string;
+  history: NonEmptyArray<string>;
+  historyCursor: number;
+};
+
+/**
+ * Persisted (database-safe) browser state
+ * Uses Record for tabs to enable lookup by ID without array scanning
+ */
+export type PersistedBrowserState = {
+  activeTabId: BrowserTabId;
+  tabOrder: BrowserTabId[];
+  tabs: Record<BrowserTabId, PersistedBrowserTabState>;
+};

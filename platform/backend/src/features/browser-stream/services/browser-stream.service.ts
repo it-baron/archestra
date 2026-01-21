@@ -3,6 +3,27 @@ import { getChatMcpClient } from "@/clients/chat-mcp-client";
 import logger from "@/logging";
 import { ToolModel } from "@/models";
 import { ApiError } from "@/types";
+import {
+  applyNavigate,
+  applyTabsClose,
+  applyTabsCreate,
+  applyTabsList,
+  resolveIndexForTab,
+} from "./browser-stream.state";
+import {
+  createInitialState,
+  generateTabId,
+} from "./browser-stream.state.conversion";
+import { isErr, isOk, isSome } from "./browser-stream.state.helpers";
+import {
+  type BrowserState,
+  type BrowserTabsListEntry,
+  Some,
+} from "./browser-stream.state.types";
+import {
+  browserStateManager,
+  toConversationStateKey,
+} from "./browser-stream.state-manager";
 
 /**
  * User context required for MCP client authentication
@@ -58,25 +79,11 @@ export interface SnapshotResult {
 }
 
 /**
- * Maps conversationId to browser tab index
- * Each conversation gets its own browser tab
- */
-type ConversationTabKey = `${string}:${string}:${string}`;
-
-const conversationTabMap = new Map<ConversationTabKey, number>();
-
-/**
  * Tracks which agent+user combos have been cleaned up after server restart.
  * On first browser panel open after restart, we close all orphaned tabs.
  */
 type AgentUserKey = `${string}:${string}`;
 const cleanedUpAgents = new Set<AgentUserKey>();
-
-const toConversationTabKey = (
-  agentId: string,
-  userId: string,
-  conversationId: string,
-): ConversationTabKey => `${agentId}:${userId}:${conversationId}`;
 
 const toAgentUserKey = (agentId: string, userId: string): AgentUserKey =>
   `${agentId}:${userId}`;
@@ -240,7 +247,7 @@ export class BrowserStreamService {
 
   /**
    * Select or create a browser tab for a conversation
-   * Uses Playwright MCP browser_tabs tool
+   * Uses Playwright MCP browser_tabs tool and persists state to database
    */
   async selectOrCreateTab(
     agentId: string,
@@ -268,7 +275,7 @@ export class BrowserStreamService {
     // Clean up orphaned tabs on first access after server restart
     await this.cleanupOrphanedTabs(agentId, userContext, tabsTool, client);
 
-    const tabKey = toConversationTabKey(
+    const stateKey = toConversationStateKey(
       agentId,
       userContext.userId,
       conversationId,
@@ -276,70 +283,152 @@ export class BrowserStreamService {
 
     logger.info(
       {
-        tabKey,
+        stateKey,
         agentId,
         userId: userContext.userId,
         conversationId,
-        existingTabIndex: conversationTabMap.get(tabKey),
-        allTabKeys: Array.from(conversationTabMap.keys()),
       },
       "selectOrCreateTab called",
     );
 
     try {
-      const existingTabIndex = conversationTabMap.get(tabKey);
+      // Load existing state from cache or database
+      const loadResult = await browserStateManager.getOrLoad({
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+      });
 
-      if (existingTabIndex !== undefined) {
-        try {
-          const selectExistingResult = await client.callTool({
-            name: tabsTool,
-            arguments: { action: "select", index: existingTabIndex },
-          });
+      if (isErr(loadResult)) {
+        logger.warn(
+          { agentId, conversationId, error: loadResult.error },
+          "Failed to load browser state, will create new",
+        );
+      }
 
-          if (!selectExistingResult.isError) {
-            logger.info(
+      const existingState = isOk(loadResult) ? loadResult.value : null;
+
+      // If we have existing state with a tab, try to resolve its index
+      if (existingState && existingState.tabs.length > 0) {
+        const activeTab = existingState.tabs.find(
+          (t) => t.id === existingState.activeTabId,
+        );
+
+        // Check if we have a resolved index
+        if (activeTab && isSome(activeTab.index)) {
+          const existingTabIndex = activeTab.index.value;
+          try {
+            const selectExistingResult = await client.callTool({
+              name: tabsTool,
+              arguments: { action: "select", index: existingTabIndex },
+            });
+
+            if (!selectExistingResult.isError) {
+              logger.info(
+                {
+                  agentId,
+                  conversationId,
+                  tabIndex: existingTabIndex,
+                  action: "switch_to_existing_tab",
+                },
+                "[BrowserTabs] Switched to existing tab for conversation",
+              );
+              return { success: true, tabIndex: existingTabIndex };
+            }
+
+            const errorText = this.extractTextContent(
+              selectExistingResult.content,
+            );
+            logger.warn(
               {
                 agentId,
                 conversationId,
                 tabIndex: existingTabIndex,
-                action: "switch_to_existing_tab",
+                error: errorText,
               },
-              "[BrowserTabs] Switched to existing tab for conversation",
+              "Failed to select existing conversation tab, will sync indices",
             );
-            return { success: true, tabIndex: existingTabIndex };
+          } catch (selectError) {
+            logger.warn(
+              {
+                agentId,
+                conversationId,
+                tabIndex: existingTabIndex,
+                error:
+                  selectError instanceof Error
+                    ? selectError.message
+                    : String(selectError),
+              },
+              "Exception selecting existing tab, will sync indices",
+            );
           }
-
-          const errorText = this.extractTextContent(
-            selectExistingResult.content,
-          );
-          logger.warn(
-            {
-              agentId,
-              conversationId,
-              tabIndex: existingTabIndex,
-              error: errorText,
-            },
-            "Failed to select existing conversation tab, creating a new one",
-          );
-        } catch (selectError) {
-          // MCP tool call threw exception (e.g., tab no longer exists)
-          logger.warn(
-            {
-              agentId,
-              conversationId,
-              tabIndex: existingTabIndex,
-              error:
-                selectError instanceof Error
-                  ? selectError.message
-                  : String(selectError),
-            },
-            "Exception selecting existing tab, clearing stale entry and creating new one",
-          );
         }
-        // Clear stale entry and fall through to create new tab
-        conversationTabMap.delete(tabKey);
+
+        // If index unavailable or selection failed, sync with browser_tabs.list
+        const listResult = await client.callTool({
+          name: tabsTool,
+          arguments: { action: "list" },
+        });
+
+        if (!listResult.isError) {
+          const browserTabs = this.parseTabsList(listResult.content);
+          const listEntries = this.toBrowserTabsListEntries(browserTabs);
+
+          // Check if tab counts match - if so, sync indices
+          if (listEntries.length === existingState.tabs.length) {
+            const syncResult = applyTabsList({
+              state: existingState,
+              list: listEntries,
+            });
+
+            if (isOk(syncResult)) {
+              const updatedState = syncResult.value;
+              await browserStateManager.set({
+                agentId,
+                userId: userContext.userId,
+                conversationId,
+                state: updatedState,
+              });
+
+              const indexResult = resolveIndexForTab({
+                state: updatedState,
+                tabId: updatedState.activeTabId,
+              });
+
+              if (isOk(indexResult)) {
+                // Select the active tab
+                await client.callTool({
+                  name: tabsTool,
+                  arguments: { action: "select", index: indexResult.value },
+                });
+                logger.info(
+                  {
+                    agentId,
+                    conversationId,
+                    tabIndex: indexResult.value,
+                    action: "synced_and_selected",
+                  },
+                  "[BrowserTabs] Synced indices and selected active tab",
+                );
+                return { success: true, tabIndex: indexResult.value };
+              }
+            }
+          }
+        }
+
+        // Tab count mismatch or sync failed - clear state and start fresh
+        logger.warn(
+          { agentId, conversationId },
+          "State/browser mismatch, clearing state and creating new tab",
+        );
+        await browserStateManager.clear({
+          agentId,
+          userId: userContext.userId,
+          conversationId,
+        });
       }
 
+      // No existing state or state cleared - create new tab
       const listResult = await client.callTool({
         name: tabsTool,
         arguments: { action: "list" },
@@ -408,16 +497,33 @@ export class BrowserStreamService {
         return { success: false, error: errorText || "Failed to select tab" };
       }
 
-      conversationTabMap.set(tabKey, resolvedTabIndex);
+      // Create initial state with the new tab
+      const tabId = generateTabId();
+      const initialState = createInitialState(tabId, "about:blank");
+      // Update the tab with the resolved index
+      const stateWithIndex: BrowserState = {
+        ...initialState,
+        tabs: initialState.tabs.map((t) =>
+          t.id === tabId
+            ? { ...t, index: Some(resolvedTabIndex as number) }
+            : t,
+        ),
+      };
+
+      await browserStateManager.set({
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+        state: stateWithIndex,
+      });
+
       logger.info(
         {
           agentId,
           conversationId,
           tabIndex: resolvedTabIndex,
+          tabId,
           action: "created_new_tab",
-          allMappings: Array.from(conversationTabMap.entries()).map(
-            ([k, v]) => ({ key: k, index: v }),
-          ),
         },
         "[BrowserTabs] Created new tab for conversation",
       );
@@ -431,6 +537,20 @@ export class BrowserStreamService {
       );
       return { success: false, error: errorMessage };
     }
+  }
+
+  /**
+   * Convert parsed tabs list to BrowserTabsListEntry format
+   */
+  private toBrowserTabsListEntries(
+    tabs: Array<{ index: number; title?: string; url?: string }>,
+  ): BrowserTabsListEntry[] {
+    // Determine which tab is current (first one with isCurrent flag, or index 0)
+    const currentIndex = tabs.find((t) => t.index === 0)?.index ?? 0;
+    return tabs.map((t) => ({
+      index: t.index,
+      isCurrent: t.index === currentIndex,
+    }));
   }
 
   /**
@@ -479,7 +599,8 @@ export class BrowserStreamService {
   }
 
   /**
-   * Navigate browser to a URL in a conversation's tab
+   * Navigate browser to a URL in a conversation's tab.
+   * Updates history in persisted state.
    */
   async navigate(
     agentId: string,
@@ -526,6 +647,46 @@ export class BrowserStreamService {
     if (result.isError) {
       const errorText = this.extractTextContent(result.content);
       throw new ApiError(500, errorText || "Navigation failed");
+    }
+
+    // Update history in state
+    const loadResult = await browserStateManager.getOrLoad({
+      agentId,
+      userId: userContext.userId,
+      conversationId,
+    });
+
+    if (isOk(loadResult) && loadResult.value) {
+      const state = loadResult.value;
+      const navigateResult = applyNavigate({
+        state,
+        tabId: state.activeTabId,
+        url,
+      });
+
+      if (isOk(navigateResult)) {
+        await browserStateManager.set({
+          agentId,
+          userId: userContext.userId,
+          conversationId,
+          state: navigateResult.value,
+        });
+        const activeTab = navigateResult.value.tabs.find(
+          (t) => t.id === state.activeTabId,
+        );
+        logger.info(
+          {
+            agentId,
+            conversationId,
+            url,
+            tabId: state.activeTabId,
+            history: activeTab?.history,
+            historyLength: activeTab?.history.length,
+            historyCursor: activeTab?.historyCursor,
+          },
+          "[BrowserTabs] Updated navigation history",
+        );
+      }
     }
 
     return {
@@ -654,27 +815,20 @@ export class BrowserStreamService {
 
   /**
    * Close a conversation's browser tab.
-   *
-   * Note: The conversation-to-tab mapping is stored in-memory only.
-   * After server restart, the mapping is lost but browser tabs persist.
-   * When the tab index is not in memory, we do best-effort cleanup by
-   * listing tabs and closing the most recently created one (highest index).
+   * Uses persisted browser state to track tab indices.
    */
   async closeTab(
     agentId: string,
     conversationId: string,
     userContext: BrowserUserContext,
   ): Promise<TabResult> {
-    const tabKey = toConversationTabKey(
-      agentId,
-      userContext.userId,
-      conversationId,
-    );
-    let tabIndex = conversationTabMap.get(tabKey);
-
     const tabsTool = await this.findTabsTool(agentId);
     if (!tabsTool) {
-      conversationTabMap.delete(tabKey);
+      await browserStateManager.clear({
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+      });
       return { success: true };
     }
 
@@ -684,17 +838,35 @@ export class BrowserStreamService {
       userContext.userIsProfileAdmin,
     );
     if (!client) {
-      conversationTabMap.delete(tabKey);
+      await browserStateManager.clear({
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+      });
       return { success: true };
     }
 
-    // If we don't have the tab index in memory (e.g., after server restart),
-    // try to find it by listing all tabs and looking for one with matching URL pattern
-    // or just close all non-zero tabs since we can't identify which is which
+    // Load state to get tab index
+    const loadResult = await browserStateManager.getOrLoad({
+      agentId,
+      userId: userContext.userId,
+      conversationId,
+    });
+
+    let tabIndex: number | undefined;
+    if (isOk(loadResult) && loadResult.value) {
+      const state = loadResult.value;
+      const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+      if (activeTab && isSome(activeTab.index)) {
+        tabIndex = activeTab.index.value;
+      }
+    }
+
+    // If we don't have the tab index, try to find it from browser
     if (tabIndex === undefined) {
       logger.info(
         { agentId, conversationId },
-        "Tab index not in memory, checking browser tabs",
+        "Tab index not in state, checking browser tabs",
       );
 
       try {
@@ -705,14 +877,16 @@ export class BrowserStreamService {
 
         if (!listResult.isError) {
           const tabs = this.parseTabsList(listResult.content);
-          // If there's only one tab (index 0), nothing to close
           if (tabs.length <= 1) {
+            await browserStateManager.clear({
+              agentId,
+              userId: userContext.userId,
+              conversationId,
+            });
             return { success: true };
           }
 
-          // Since we can't identify which tab belongs to which conversation,
-          // we'll close the highest-indexed tab (most recently created)
-          // This is a best-effort cleanup
+          // Close the highest-indexed tab as best-effort
           const maxTab = tabs.reduce((max, tab) =>
             tab.index > max.index ? tab : max,
           );
@@ -729,6 +903,11 @@ export class BrowserStreamService {
           { error, agentId, conversationId },
           "Failed to list tabs for cleanup",
         );
+        await browserStateManager.clear({
+          agentId,
+          userId: userContext.userId,
+          conversationId,
+        });
         return { success: true };
       }
     }
@@ -738,21 +917,21 @@ export class BrowserStreamService {
         { agentId, conversationId, tabIndex },
         "[BrowserTabs] No tab to close (undefined or tab 0)",
       );
-      return { success: true }; // No tab to close or can't close tab 0
+      await browserStateManager.clear({
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+      });
+      return { success: true };
     }
 
-    // Log state before closing
-    const mappingsBeforeClose = Array.from(conversationTabMap.entries()).map(
-      ([k, v]) => ({ key: k, index: v }),
-    );
     logger.info(
       {
         agentId,
         conversationId,
         closingTabIndex: tabIndex,
-        mappingsBeforeClose,
       },
-      "[BrowserTabs] Closing tab - state before",
+      "[BrowserTabs] Closing tab",
     );
 
     try {
@@ -761,59 +940,38 @@ export class BrowserStreamService {
         arguments: { action: "close", index: tabIndex },
       });
 
-      conversationTabMap.delete(tabKey);
-
-      this.shiftTabIndicesAfterClose({
+      // Clear the state for this conversation
+      await browserStateManager.clear({
         agentId,
         userId: userContext.userId,
-        closedIndex: tabIndex,
+        conversationId,
       });
 
-      // Log state after closing
-      const mappingsAfterClose = Array.from(conversationTabMap.entries()).map(
-        ([k, v]) => ({ key: k, index: v }),
-      );
       logger.info(
         {
           agentId,
           conversationId,
           closedTabIndex: tabIndex,
-          mappingsAfterClose,
         },
-        "[BrowserTabs] Closed tab - state after",
+        "[BrowserTabs] Closed tab and cleared state",
       );
 
       return { success: true };
     } catch (error) {
       logger.error({ error, agentId, conversationId }, "Failed to close tab");
-      conversationTabMap.delete(tabKey);
-      return { success: true }; // Consider success even if close fails
+      await browserStateManager.clear({
+        agentId,
+        userId: userContext.userId,
+        conversationId,
+      });
+      return { success: true };
     }
   }
 
-  private shiftTabIndicesAfterClose(params: {
-    agentId: string;
-    userId: string;
-    closedIndex: number;
-  }): void {
-    const { agentId, userId, closedIndex } = params;
-    const prefix = `${agentId}:${userId}:`;
-
-    for (const [key, index] of conversationTabMap.entries()) {
-      if (!key.startsWith(prefix)) {
-        continue;
-      }
-
-      if (index > closedIndex) {
-        conversationTabMap.set(key, index - 1);
-        logger.info(
-          { key, oldIndex: index, newIndex: index - 1, closedIndex },
-          "[BrowserTabs] Shifted tab index after tab close",
-        );
-      }
-    }
-  }
-
+  /**
+   * Sync browser state from AI-initiated browser_tabs tool calls.
+   * Updates state manager based on the tool action and result.
+   */
   async syncTabMappingFromTabsToolCall(params: {
     agentId: string;
     conversationId: string;
@@ -835,126 +993,168 @@ export class BrowserStreamService {
     }
 
     const action = actionValue.trim().toLowerCase();
-    const tabKey = toConversationTabKey(
-      agentId,
-      userContext.userId,
-      conversationId,
-    );
-    const existingIndex = conversationTabMap.get(tabKey);
 
-    if (action === "new" || action === "list") {
+    // Load existing state
+    const loadResult = await browserStateManager.getOrLoad({
+      agentId,
+      userId: userContext.userId,
+      conversationId,
+    });
+
+    const existingState = isOk(loadResult) ? loadResult.value : null;
+
+    if (action === "list") {
+      // On list, sync indices with current browser state
+      if (!existingState) return;
+
+      const browserTabs = this.parseTabsList(toolResultContent);
+      const listEntries = this.toBrowserTabsListEntries(browserTabs);
+
+      if (listEntries.length === existingState.tabs.length) {
+        const syncResult = applyTabsList({
+          state: existingState,
+          list: listEntries,
+        });
+
+        if (isOk(syncResult)) {
+          await browserStateManager.set({
+            agentId,
+            userId: userContext.userId,
+            conversationId,
+            state: syncResult.value,
+          });
+          logger.info(
+            { agentId, conversationId, action },
+            "[BrowserTabs] Synced indices from AI list action",
+          );
+        }
+      }
+      return;
+    }
+
+    if (action === "new") {
+      // On new tab, create a new tab in state
       const currentIndex =
         this.extractCurrentTabIndexFromTabsContent(toolResultContent);
-      if (currentIndex !== undefined) {
-        conversationTabMap.set(tabKey, currentIndex);
-        logger.info(
-          {
+      if (currentIndex === undefined) return;
+
+      const tabId = generateTabId();
+
+      if (existingState) {
+        const createResult = applyTabsCreate({
+          state: existingState,
+          tabId,
+          index: currentIndex,
+          initialUrl: "about:blank",
+        });
+
+        if (isOk(createResult)) {
+          await browserStateManager.set({
             agentId,
+            userId: userContext.userId,
             conversationId,
-            action,
-            previousIndex: existingIndex,
-            newIndex: currentIndex,
-          },
-          "[BrowserTabs] Synced tab mapping from AI tool call (new/list)",
+            state: createResult.value,
+          });
+          logger.info(
+            { agentId, conversationId, action, tabId, index: currentIndex },
+            "[BrowserTabs] Created new tab in state from AI action",
+          );
+        }
+      } else {
+        // No existing state - create initial state
+        const initialState = createInitialState(tabId, "about:blank");
+        const stateWithIndex: BrowserState = {
+          ...initialState,
+          tabs: initialState.tabs.map((t) =>
+            t.id === tabId ? { ...t, index: Some(currentIndex) } : t,
+          ),
+        };
+
+        await browserStateManager.set({
+          agentId,
+          userId: userContext.userId,
+          conversationId,
+          state: stateWithIndex,
+        });
+        logger.info(
+          { agentId, conversationId, action, tabId, index: currentIndex },
+          "[BrowserTabs] Created initial state from AI new action",
         );
       }
       return;
     }
 
     if (action === "select") {
-      const selectedIndex = this.parseTabIndexValue(toolArguments?.index);
-      if (selectedIndex !== null) {
-        conversationTabMap.set(tabKey, selectedIndex);
-        logger.info(
-          {
-            agentId,
-            conversationId,
-            action,
-            previousIndex: existingIndex,
-            selectedIndex,
-          },
-          "[BrowserTabs] Synced tab mapping from AI tool call (select by arg)",
-        );
-        return;
-      }
+      // On select, update active tab ID based on index
+      if (!existingState) return;
 
-      const currentIndex =
-        this.extractCurrentTabIndexFromTabsContent(toolResultContent);
-      if (currentIndex !== undefined) {
-        conversationTabMap.set(tabKey, currentIndex);
+      const selectedIndex = this.parseTabIndexValue(toolArguments?.index);
+      if (selectedIndex === null) return;
+
+      // Find tab with this index and set as active
+      const selectedTab = existingState.tabs.find(
+        (t) => isSome(t.index) && t.index.value === selectedIndex,
+      );
+
+      if (selectedTab) {
+        const updatedState: BrowserState = {
+          ...existingState,
+          activeTabId: selectedTab.id,
+        };
+
+        await browserStateManager.set({
+          agentId,
+          userId: userContext.userId,
+          conversationId,
+          state: updatedState,
+        });
         logger.info(
           {
             agentId,
             conversationId,
             action,
-            previousIndex: existingIndex,
-            currentIndex,
+            selectedIndex,
+            activeTabId: selectedTab.id,
           },
-          "[BrowserTabs] Synced tab mapping from AI tool call (select by result)",
+          "[BrowserTabs] Updated active tab from AI select action",
         );
       }
       return;
     }
 
     if (action === "close") {
-      const closedIndex =
-        this.parseTabIndexValue(toolArguments?.index) ?? existingIndex ?? null;
+      // On close, remove tab from state
+      if (!existingState) return;
 
-      logger.info(
-        {
-          agentId,
-          conversationId,
-          action,
-          closedIndex,
-          existingIndex,
-          mappingsBefore: Array.from(conversationTabMap.entries()).map(
-            ([k, v]) => ({ key: k, index: v }),
-          ),
-        },
-        "[BrowserTabs] Processing AI close action - before shift",
-      );
+      const closedIndex = this.parseTabIndexValue(toolArguments?.index);
+      if (closedIndex === null) return;
 
-      if (closedIndex !== null) {
-        this.shiftTabIndicesAfterClose({
+      const closeResult = applyTabsClose({
+        state: existingState,
+        index: closedIndex,
+      });
+
+      if (isOk(closeResult)) {
+        await browserStateManager.set({
           agentId,
           userId: userContext.userId,
-          closedIndex,
+          conversationId,
+          state: closeResult.value,
         });
-      }
-
-      const currentIndex =
-        this.extractCurrentTabIndexFromTabsContent(toolResultContent);
-      if (currentIndex !== undefined) {
-        conversationTabMap.set(tabKey, currentIndex);
         logger.info(
-          {
-            agentId,
-            conversationId,
-            action,
-            closedIndex,
-            newCurrentIndex: currentIndex,
-            mappingsAfter: Array.from(conversationTabMap.entries()).map(
-              ([k, v]) => ({ key: k, index: v }),
-            ),
-          },
-          "[BrowserTabs] Synced tab mapping from AI tool call (close) - new current",
+          { agentId, conversationId, action, closedIndex },
+          "[BrowserTabs] Removed tab from state after AI close action",
         );
-        return;
-      }
-
-      if (closedIndex !== null && existingIndex === closedIndex) {
-        conversationTabMap.delete(tabKey);
+      } else if (closeResult.error.kind === "CannotCloseLastTab") {
+        // Clear state if trying to close last tab
+        await browserStateManager.clear({
+          agentId,
+          userId: userContext.userId,
+          conversationId,
+        });
         logger.info(
-          {
-            agentId,
-            conversationId,
-            action,
-            closedIndex,
-            mappingsAfter: Array.from(conversationTabMap.entries()).map(
-              ([k, v]) => ({ key: k, index: v }),
-            ),
-          },
-          "[BrowserTabs] Synced tab mapping from AI tool call (close) - deleted mapping",
+          { agentId, conversationId, action },
+          "[BrowserTabs] Cleared state after closing last tab",
         );
       }
     }

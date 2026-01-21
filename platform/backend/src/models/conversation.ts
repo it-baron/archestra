@@ -4,6 +4,7 @@ import {
 } from "@shared";
 import { and, desc, eq, getTableColumns } from "drizzle-orm";
 import db, { schema } from "@/database";
+import type { PersistedBrowserState } from "@/features/browser-stream/services/browser-stream.state.types";
 import type {
   Conversation,
   InsertConversation,
@@ -266,6 +267,36 @@ class ConversationModel {
       .limit(1);
 
     return result[0]?.agentId ?? null;
+  }
+
+  /**
+   * Get the browser state for a conversation.
+   * Returns null if no browser state is stored.
+   */
+  static async getBrowserState(
+    conversationId: string,
+  ): Promise<PersistedBrowserState | null> {
+    const result = await db
+      .select({ browserState: schema.conversationsTable.browserState })
+      .from(schema.conversationsTable)
+      .where(eq(schema.conversationsTable.id, conversationId))
+      .limit(1);
+
+    return result[0]?.browserState ?? null;
+  }
+
+  /**
+   * Update the browser state for a conversation.
+   * Pass null to clear the browser state.
+   */
+  static async updateBrowserState(
+    conversationId: string,
+    state: PersistedBrowserState | null,
+  ): Promise<void> {
+    await db
+      .update(schema.conversationsTable)
+      .set({ browserState: state })
+      .where(eq(schema.conversationsTable.id, conversationId));
   }
 }
 
