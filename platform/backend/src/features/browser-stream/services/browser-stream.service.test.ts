@@ -1,6 +1,6 @@
 import * as chatMcpClient from "@/clients/chat-mcp-client";
 import { beforeEach, describe, expect, test, vi } from "@/test";
-import { BrowserStreamService } from "./browser-stream";
+import { BrowserStreamService } from "./browser-stream.service";
 
 describe("BrowserStreamService URL handling", () => {
   beforeEach(() => {

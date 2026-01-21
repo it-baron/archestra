@@ -1,9 +1,16 @@
-import type { IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { vi } from "vitest";
 import { WebSocket as WS } from "ws";
 import { betterAuth } from "@/auth";
 import type * as originalConfigModule from "@/config";
-import { beforeEach, describe, expect, test } from "@/test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "@/test";
 import type { WebSocketMessage } from "@/types";
 
 vi.mock("@/config", async (importOriginal) => {
@@ -20,9 +27,11 @@ vi.mock("@/config", async (importOriginal) => {
 });
 
 const { browserStreamFeature } = await import(
-  "@/services/browser-stream-feature"
+  "@/features/browser-stream/services/browser-stream.feature"
 );
 const { default: websocketService } = await import("@/websocket");
+
+const httpServer = createServer();
 
 const service = websocketService as unknown as {
   authenticateConnection: (
@@ -30,14 +39,25 @@ const service = websocketService as unknown as {
   ) => Promise<{ userId: string; organizationId: string } | null>;
   handleMessage: (message: WebSocketMessage, ws: WS) => Promise<void>;
   clientContexts: Map<WS, { userId: string; organizationId: string }>;
-  browserSubscriptions: Map<WS, unknown>;
+  browserStreamContext: {
+    clearSubscriptions: () => void;
+    hasSubscription: (ws: WS) => boolean;
+  };
 };
 
 describe("websocket browser-stream authorization", () => {
+  beforeAll(() => {
+    websocketService.start(httpServer);
+  });
+
+  afterAll(() => {
+    websocketService.stop();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     service.clientContexts.clear();
-    service.browserSubscriptions.clear();
+    service.browserStreamContext.clearSubscriptions();
   });
 
   test("authenticateConnection rejects unauthenticated requests", async () => {
@@ -108,7 +128,7 @@ describe("websocket browser-stream authorization", () => {
         },
       }),
     );
-    expect(service.browserSubscriptions.has(ws)).toBe(false);
+    expect(service.browserStreamContext.hasSubscription(ws)).toBe(false);
     expect(selectSpy).not.toHaveBeenCalled();
     expect(screenshotSpy).not.toHaveBeenCalled();
   });

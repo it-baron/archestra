@@ -16,6 +16,7 @@ import {
   detectProviderFromModel,
 } from "@/clients/llm-client";
 import config from "@/config";
+import { browserStreamFeature } from "@/features/browser-stream/services/browser-stream.feature";
 import logger from "@/logging";
 import {
   AgentModel,
@@ -32,7 +33,6 @@ import {
   getSecretValueForLlmProviderApiKey,
   secretManager,
 } from "@/secrets-manager";
-import { browserStreamFeature } from "@/services/browser-stream-feature";
 import {
   ApiError,
   constructResponseSchema,

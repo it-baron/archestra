@@ -2,7 +2,7 @@ import config from "@/config";
 import {
   BrowserStreamService,
   type BrowserUserContext,
-} from "./browser-stream";
+} from "./browser-stream.service";
 
 /**
  * Browser WebSocket message types that should be guarded by the feature flag
@@ -108,6 +108,16 @@ class BrowserStreamFeature {
     userContext: BrowserUserContext,
   ) {
     return this.getService().closeTab(agentId, conversationId, userContext);
+  }
+
+  syncTabMappingFromTabsToolCall(params: {
+    agentId: string;
+    conversationId: string;
+    userContext: BrowserUserContext;
+    toolArguments?: Record<string, unknown>;
+    toolResultContent: unknown;
+  }) {
+    return this.getService().syncTabMappingFromTabsToolCall(params);
   }
 
   takeScreenshot(

@@ -802,6 +802,13 @@ export class BrowserStreamService {
       const selectedIndex = this.parseTabIndexValue(toolArguments?.index);
       if (selectedIndex !== null) {
         conversationTabMap.set(tabKey, selectedIndex);
+        return;
+      }
+
+      const currentIndex =
+        this.extractCurrentTabIndexFromTabsContent(toolResultContent);
+      if (currentIndex !== undefined) {
+        conversationTabMap.set(tabKey, currentIndex);
       }
       return;
     }
@@ -809,26 +816,24 @@ export class BrowserStreamService {
     if (action === "close") {
       const closedIndex =
         this.parseTabIndexValue(toolArguments?.index) ?? existingIndex ?? null;
-      if (closedIndex === null) {
+
+      if (closedIndex !== null) {
+        this.shiftTabIndicesAfterClose({
+          agentId,
+          userId: userContext.userId,
+          closedIndex,
+        });
+      }
+
+      const currentIndex =
+        this.extractCurrentTabIndexFromTabsContent(toolResultContent);
+      if (currentIndex !== undefined) {
+        conversationTabMap.set(tabKey, currentIndex);
         return;
       }
 
-      this.shiftTabIndicesAfterClose({
-        agentId,
-        userId: userContext.userId,
-        closedIndex,
-      });
-
-      if (existingIndex === closedIndex) {
-        const currentIndex = await this.getCurrentTabIndex(
-          agentId,
-          userContext,
-        );
-        if (currentIndex !== undefined) {
-          conversationTabMap.set(tabKey, currentIndex);
-        } else {
-          conversationTabMap.delete(tabKey);
-        }
+      if (closedIndex !== null && existingIndex === closedIndex) {
+        conversationTabMap.delete(tabKey);
       }
     }
   }
@@ -1056,48 +1061,139 @@ export class BrowserStreamService {
    * Get current page URL using browser_tabs
    * Parses the current tab's URL from the tabs list
    */
+  private parseTabIndexValue(value: unknown): number | null {
+    if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private isCurrentTabFlag(
+    flag: unknown,
+    candidateIndex: number | null,
+  ): boolean {
+    if (flag === true) return true;
+    if (typeof flag === "string") {
+      const normalized = flag.trim().toLowerCase();
+      if (normalized === "true") return true;
+      const numericFlag = this.parseTabIndexValue(flag);
+      if (numericFlag === 1) return true;
+      if (numericFlag === 0) return false;
+      if (numericFlag !== null && candidateIndex !== null) {
+        return numericFlag === candidateIndex;
+      }
+    }
+    if (typeof flag === "number") {
+      if (flag === 1) return true;
+      if (flag === 0) return false;
+      if (candidateIndex !== null) {
+        return flag === candidateIndex;
+      }
+    }
+    return false;
+  }
+
+  private extractCurrentTabIndexFromTabsJson(
+    textContent: string,
+  ): number | undefined {
+    if (textContent.trim() === "") return undefined;
+
+    const findCurrentIndex = (
+      tabs: unknown[],
+      currentIndex: number | null,
+    ): number | undefined => {
+      if (currentIndex !== null) {
+        return currentIndex;
+      }
+
+      for (const item of tabs) {
+        if (typeof item !== "object" || item === null) continue;
+        const candidate = item as Record<string, unknown>;
+        const candidateIndex = this.parseTabIndexValue(
+          candidate.index ?? candidate.id ?? candidate.tabIndex,
+        );
+        const currentFlag =
+          candidate.current ??
+          candidate.isCurrent ??
+          candidate.is_current ??
+          candidate.active ??
+          candidate.selected;
+
+        if (this.isCurrentTabFlag(currentFlag, candidateIndex)) {
+          if (candidateIndex !== null) {
+            return candidateIndex;
+          }
+        }
+      }
+
+      return undefined;
+    };
+
+    try {
+      const parsed: unknown = JSON.parse(textContent);
+      if (Array.isArray(parsed)) {
+        return findCurrentIndex(parsed, null);
+      }
+
+      if (typeof parsed === "object" && parsed !== null) {
+        const candidate = parsed as Record<string, unknown>;
+        const currentIndex = this.parseTabIndexValue(
+          candidate.currentIndex ??
+            candidate.current_index ??
+            candidate.selectedIndex ??
+            candidate.selected_index,
+        );
+        const tabs = candidate.tabs;
+
+        if (Array.isArray(tabs)) {
+          return findCurrentIndex(tabs, currentIndex);
+        }
+
+        if (currentIndex !== null) {
+          return currentIndex;
+        }
+      }
+    } catch {
+      return undefined;
+    }
+
+    return undefined;
+  }
+
+  private extractCurrentTabIndexFromTabsContent(
+    content: unknown,
+  ): number | undefined {
+    const textContent = this.extractTextContent(content);
+
+    const indexFromJson = this.extractCurrentTabIndexFromTabsJson(textContent);
+    if (indexFromJson !== undefined) {
+      return indexFromJson;
+    }
+
+    const lines = textContent.split("\n");
+    for (const line of lines) {
+      if (!line.includes("(current)")) continue;
+      const match = line.match(/(?:^|\\s|-)\\s*(\\d+)\\s*:/);
+      if (!match) continue;
+      const parsed = Number.parseInt(match[1], 10);
+      if (!Number.isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+
+    return undefined;
+  }
+
   private extractCurrentUrlFromTabsJson(
     textContent: string,
   ): string | undefined {
     if (textContent.trim() === "") return undefined;
-
-    const parseTabIndex = (value: unknown): number | null => {
-      if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
-        return value;
-      }
-      if (typeof value === "string") {
-        const parsed = Number.parseInt(value, 10);
-        if (!Number.isNaN(parsed) && parsed >= 0) {
-          return parsed;
-        }
-      }
-      return null;
-    };
-
-    const isCurrentTabFlag = (
-      flag: unknown,
-      candidateIndex: number | null,
-    ): boolean => {
-      if (flag === true) return true;
-      if (typeof flag === "string") {
-        const normalized = flag.trim().toLowerCase();
-        if (normalized === "true") return true;
-        const numericFlag = parseTabIndex(flag);
-        if (numericFlag === 1) return true;
-        if (numericFlag === 0) return false;
-        if (numericFlag !== null && candidateIndex !== null) {
-          return numericFlag === candidateIndex;
-        }
-      }
-      if (typeof flag === "number") {
-        if (flag === 1) return true;
-        if (flag === 0) return false;
-        if (candidateIndex !== null) {
-          return flag === candidateIndex;
-        }
-      }
-      return false;
-    };
 
     const findCurrentUrlInTabs = (
       tabs: unknown[],
@@ -1107,7 +1203,7 @@ export class BrowserStreamService {
         for (const item of tabs) {
           if (typeof item !== "object" || item === null) continue;
           const candidate = item as Record<string, unknown>;
-          const candidateIndex = parseTabIndex(
+          const candidateIndex = this.parseTabIndexValue(
             candidate.index ?? candidate.id ?? candidate.tabIndex,
           );
           if (candidateIndex !== null && candidateIndex === currentIndex) {
@@ -1132,7 +1228,7 @@ export class BrowserStreamService {
         if (typeof item !== "object" || item === null) continue;
         const candidate = item as Record<string, unknown>;
         if (typeof candidate.url !== "string") continue;
-        const candidateIndex = parseTabIndex(
+        const candidateIndex = this.parseTabIndexValue(
           candidate.index ?? candidate.id ?? candidate.tabIndex,
         );
         const currentFlag =
@@ -1141,7 +1237,7 @@ export class BrowserStreamService {
           candidate.is_current ??
           candidate.active ??
           candidate.selected;
-        if (isCurrentTabFlag(currentFlag, candidateIndex)) {
+        if (this.isCurrentTabFlag(currentFlag, candidateIndex)) {
           return candidate.url;
         }
       }
@@ -1157,7 +1253,7 @@ export class BrowserStreamService {
 
       if (typeof parsed === "object" && parsed !== null) {
         const candidate = parsed as Record<string, unknown>;
-        const currentIndex = parseTabIndex(
+        const currentIndex = this.parseTabIndexValue(
           candidate.currentIndex ??
             candidate.current_index ??
             candidate.selectedIndex ??

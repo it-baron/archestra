@@ -1,7 +1,15 @@
+import { createServer } from "node:http";
 import { vi } from "vitest";
 import { WebSocket as WS } from "ws";
 import type * as originalConfigModule from "@/config";
-import { beforeEach, describe, expect, test } from "@/test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "@/test";
 import type { WebSocketMessage } from "@/types";
 
 vi.mock("@/config", async (importOriginal) => {
@@ -18,9 +26,11 @@ vi.mock("@/config", async (importOriginal) => {
 });
 
 const { browserStreamFeature } = await import(
-  "@/services/browser-stream-feature"
+  "@/features/browser-stream/services/browser-stream.feature"
 );
 const { default: websocketService } = await import("@/websocket");
+
+const httpServer = createServer();
 
 const service = websocketService as unknown as {
   handleMessage: (message: WebSocketMessage, ws: WS) => Promise<void>;
@@ -28,14 +38,25 @@ const service = websocketService as unknown as {
     WS,
     { userId: string; organizationId: string; userIsProfileAdmin: boolean }
   >;
-  browserSubscriptions: Map<WS, { intervalId: NodeJS.Timeout }>;
+  browserStreamContext: {
+    clearSubscriptions: () => void;
+    unsubscribeBrowserStream: (ws: WS) => void;
+  };
 };
 
 describe("websocket browser-stream screenshot handling", () => {
+  beforeAll(() => {
+    websocketService.start(httpServer);
+  });
+
+  afterAll(() => {
+    websocketService.stop();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     service.clientContexts.clear();
-    service.browserSubscriptions.clear();
+    service.browserStreamContext.clearSubscriptions();
   });
 
   test("sends an error when screenshot data is missing", async ({
@@ -90,9 +111,6 @@ describe("websocket browser-stream screenshot handling", () => {
       }),
     );
 
-    const subscription = service.browserSubscriptions.get(ws);
-    if (subscription) {
-      clearInterval(subscription.intervalId);
-    }
+    service.browserStreamContext.unsubscribeBrowserStream(ws);
   });
 });
