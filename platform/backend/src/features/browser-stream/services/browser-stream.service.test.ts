@@ -560,6 +560,67 @@ describe("BrowserStreamService URL handling", () => {
     expect(newCalls).toHaveLength(1);
   });
 
+  test("selectOrCreateTab logs browser_tabs new action", async () => {
+    const browserService = new BrowserStreamService();
+    const agentId = "test-agent";
+    const conversationId = "test-conversation-log";
+    const userContext = { userId: "test-user", userIsProfileAdmin: false };
+
+    vi.spyOn(
+      browserService as unknown as {
+        findTabsTool: () => Promise<string | null>;
+      },
+      "findTabsTool",
+    ).mockResolvedValue("browser_tabs");
+    vi.spyOn(browserStateManager, "getOrLoad").mockResolvedValue(Ok(null));
+    vi.spyOn(browserStateManager, "set").mockImplementation(async (params) =>
+      Ok(params.state),
+    );
+
+    const callTool = vi.fn(
+      async (request: { arguments?: Record<string, unknown> }) => {
+        const action = request.arguments?.action;
+        if (action === "list") {
+          return {
+            isError: false,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify([]),
+              },
+            ],
+          };
+        }
+        return { isError: false, content: [] };
+      },
+    );
+
+    vi.spyOn(chatMcpClient, "getChatMcpClient").mockResolvedValue({
+      callTool,
+    } as never);
+
+    const infoSpy = vi
+      .spyOn(logger, "info")
+      .mockImplementation(() => undefined);
+
+    const result = await browserService.selectOrCreateTab(
+      agentId,
+      conversationId,
+      userContext,
+    );
+
+    expect(result).toEqual({ success: true, tabIndex: 0 });
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId,
+        conversationId,
+        userId: userContext.userId,
+        action: "new",
+      }),
+      "[BrowserTabs] browser_tabs action",
+    );
+  });
+
   test("syncTabMappingFromTabsToolCall uses current tab index from list", async () => {
     const browserService = new BrowserStreamService();
     const agentId = "test-agent";
