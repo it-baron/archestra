@@ -323,6 +323,10 @@ export class BrowserStreamSocketClientContext {
           error: result.error,
         },
       });
+
+      if (result.success) {
+        await this.sendImmediateScreenshot(ws, conversationId);
+      }
     } catch (error) {
       logger.error({ error, conversationId, url }, "Browser navigation failed");
       this.sendToClient(ws, {
@@ -373,6 +377,10 @@ export class BrowserStreamSocketClientContext {
           error: result.error,
         },
       });
+
+      if (result.success) {
+        await this.sendImmediateScreenshot(ws, conversationId);
+      }
     } catch (error) {
       logger.error({ error, conversationId }, "Browser navigate back failed");
       this.sendToClient(ws, {
@@ -424,6 +432,10 @@ export class BrowserStreamSocketClientContext {
           error: result.error,
         },
       });
+
+      if (result.success) {
+        await this.sendImmediateScreenshot(ws, conversationId);
+      }
     } catch (error) {
       logger.error(
         { error, conversationId, element, x, y },
@@ -475,6 +487,10 @@ export class BrowserStreamSocketClientContext {
           error: result.error,
         },
       });
+
+      if (result.success) {
+        await this.sendImmediateScreenshot(ws, conversationId);
+      }
     } catch (error) {
       logger.error({ error, conversationId }, "Browser type failed");
       this.sendToClient(ws, {
@@ -521,6 +537,10 @@ export class BrowserStreamSocketClientContext {
           error: result.error,
         },
       });
+
+      if (result.success) {
+        await this.sendImmediateScreenshot(ws, conversationId);
+      }
     } catch (error) {
       logger.error({ error, conversationId, key }, "Browser press key failed");
       this.sendToClient(ws, {
@@ -704,6 +724,34 @@ export class BrowserStreamSocketClientContext {
               : "Screenshot capture failed",
         },
       });
+    }
+  }
+
+  private async sendImmediateScreenshot(
+    ws: WebSocket,
+    conversationId: string,
+  ): Promise<void> {
+    const subscription = this.browserSubscriptions.get(ws);
+    if (!subscription || subscription.conversationId !== conversationId) {
+      return;
+    }
+    if (ws.readyState !== WS.OPEN) {
+      return;
+    }
+    if (subscription.isSending) {
+      return;
+    }
+
+    subscription.isSending = true;
+    try {
+      await this.sendScreenshot(
+        ws,
+        subscription.agentId,
+        conversationId,
+        subscription.userContext,
+      );
+    } finally {
+      subscription.isSending = false;
     }
   }
 }

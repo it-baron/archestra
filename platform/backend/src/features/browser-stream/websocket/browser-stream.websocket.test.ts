@@ -113,4 +113,86 @@ describe("websocket browser-stream screenshot handling", () => {
 
     service.browserStreamContext.unsubscribeBrowserStream(ws);
   });
+
+  test("click sends an immediate screenshot update", async ({
+    makeAgent,
+    makeConversation,
+    makeOrganization,
+    makeUser,
+  }) => {
+    const org = await makeOrganization();
+    const user = await makeUser();
+    const agent = await makeAgent();
+    const conversation = await makeConversation(agent.id, {
+      userId: user.id,
+      organizationId: org.id,
+    });
+
+    const ws = {
+      readyState: WS.OPEN,
+      send: vi.fn(),
+      close: vi.fn(),
+    } as unknown as WS;
+
+    service.clientContexts.set(ws, {
+      userId: user.id,
+      organizationId: org.id,
+      userIsProfileAdmin: false,
+    });
+
+    vi.spyOn(browserStreamFeature, "selectOrCreateTab").mockResolvedValue({
+      success: true,
+      tabIndex: 0,
+    });
+    vi.spyOn(browserStreamFeature, "takeScreenshot").mockResolvedValue({
+      screenshot: "img",
+      url: "http://example.com",
+    });
+    vi.spyOn(browserStreamFeature, "click").mockResolvedValue({
+      success: true,
+    });
+
+    await service.handleMessage(
+      {
+        type: "subscribe_browser_stream",
+        payload: { conversationId: conversation.id },
+      },
+      ws,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const sendMock = ws.send as unknown as { mockClear: () => void };
+    sendMock.mockClear();
+
+    await service.handleMessage(
+      {
+        type: "browser_click",
+        payload: { conversationId: conversation.id, x: 10, y: 10 },
+      },
+      ws,
+    );
+
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "browser_click_result",
+        payload: {
+          conversationId: conversation.id,
+          success: true,
+          error: undefined,
+        },
+      }),
+    );
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "browser_screenshot",
+        payload: {
+          conversationId: conversation.id,
+          screenshot: "img",
+          url: "http://example.com",
+        },
+      }),
+    );
+
+    service.browserStreamContext.unsubscribeBrowserStream(ws);
+  });
 });

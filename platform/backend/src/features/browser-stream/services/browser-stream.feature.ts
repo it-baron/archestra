@@ -116,8 +116,18 @@ class BrowserStreamFeature {
     userContext: BrowserUserContext;
     toolArguments?: Record<string, unknown>;
     toolResultContent: unknown;
+    tabsToolName?: string;
   }) {
     return this.getService().syncTabMappingFromTabsToolCall(params);
+  }
+
+  syncNavigationFromToolCall(params: {
+    agentId: string;
+    conversationId: string;
+    userContext: BrowserUserContext;
+    url: string;
+  }) {
+    return this.getService().syncNavigationFromToolCall(params);
   }
 
   takeScreenshot(

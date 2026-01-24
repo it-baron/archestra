@@ -694,7 +694,26 @@ export async function getChatMcpTools({
                     userContext: { userId, userIsProfileAdmin },
                     toolArguments,
                     toolResultContent: result.content,
+                    tabsToolName: mcpTool.name,
                   });
+                }
+              }
+
+              // Sync navigation history when browser_navigate tool is used
+              if (conversationId && mcpTool.name.includes("browser_navigate")) {
+                const navigateUrl = toolArguments?.url;
+                if (typeof navigateUrl === "string" && navigateUrl) {
+                  const { browserStreamFeature } = await import(
+                    "@/features/browser-stream/services/browser-stream.feature"
+                  );
+                  if (browserStreamFeature.isEnabled()) {
+                    await browserStreamFeature.syncNavigationFromToolCall({
+                      agentId,
+                      conversationId,
+                      userContext: { userId, userIsProfileAdmin },
+                      url: navigateUrl,
+                    });
+                  }
                 }
               }
 
